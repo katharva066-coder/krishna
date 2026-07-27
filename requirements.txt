@@ -18,8 +18,7 @@ parsedate_to_datetime
 io
 json
 logging
-os
-re
+lxml
 sys
 warnings
 timedelta
@@ -27,3 +26,4 @@ matplotlib
 RSIIndicator
 EMAIndicator
 AverageTrueRange
+ta
