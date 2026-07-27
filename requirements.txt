@@ -1,5 +1,3 @@
-os
-re
 streamlit
 pandas
 numpy
@@ -10,15 +8,12 @@ requests
 beautifulsoup4
 python-telegram-bot
 flask
-time
 datetime
 timezone
 parsedate_to_datetime
 io
-json
 logging
 lxml
-sys
 warnings
 timedelta
 matplotlib
