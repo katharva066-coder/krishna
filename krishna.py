@@ -55,7 +55,6 @@ INDICES_MAP = {
     "^BSESN": "SENSEX",
 }
 
-# 🌐 ग्लोबल व मॅक्रो इंडिकेटर्स
 MACRO_TICKERS = {
     "GIFT Nifty": "^NSEI",
     "US Dow Futures": "YM=F",
@@ -65,7 +64,6 @@ MACRO_TICKERS = {
     "US Dollar Index (DXY)": "DX-Y.NYB"
 }
 
-# 🏢 स्टॉक्स डिक्शनरी
 STOCKS_MAP = {
     "TATA MOTORS": "TATAMOTORS.NS", "TATAMOTORS": "TATAMOTORS.NS", "MARUTI": "MARUTI.NS",
     "MAHINDRA": "M&M.NS", "M&M": "M&M.NS", "HERO MOTOCORP": "HEROMOTOCO.NS", "EICHER": "EICHERMOT.NS",
@@ -123,11 +121,14 @@ GLOBAL_NEWS_FEEDS = [
     "https://www.investing.com/rss/news.rss"
 ]
 
-# CACHE AND LOGGING
+# CACHE AND LOGGING STATES
 last_signal_state = {}
 last_alert_candle_time = {}
 seen_news_titles = set()
 news_watched_stocks = set()
+
+# 🔴🟢 रिपिटेटिव न्यूज ट्रॅकर
+stock_news_tracker = {}
 
 day_news_log = []
 day_plus_signals_log = []
@@ -141,7 +142,7 @@ flask_app = Flask("")
 
 @flask_app.route("/")
 def home():
-    return "⚡ Shambhu's Precision Radar Active! ⚡"
+    return "⚡ Shambhu's Live Radar Engine Active! ⚡"
 
 def run_server():
     port = int(os.environ.get("PORT", 8080))
@@ -183,7 +184,6 @@ def generate_chart_image(symbol, display_name):
 
             fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 5), gridspec_kw={'height_ratios': [3, 1]}, dpi=120)
 
-            # Panel 1: Price & EMAs
             ax1.plot(df.index, df['Close'], label='Close Price', color='#1f77b4', linewidth=1.8)
             ax1.plot(df.index, df['EMA_9'], label='EMA 9', color='#2ca02c', linestyle='--', linewidth=1.2)
             ax1.plot(df.index, df['EMA_26'], label='EMA 26', color='#d62728', linestyle='--', linewidth=1.2)
@@ -192,7 +192,6 @@ def generate_chart_image(symbol, display_name):
             ax1.grid(True, linestyle=':', alpha=0.6)
             ax1.legend(loc='upper left', fontsize=8)
 
-            # Panel 2: RSI
             ax2.plot(df.index, df['RSI_14'], label='RSI (14)', color='#9467bd', linewidth=1.4)
             ax2.axhline(70, color='red', linestyle=':', alpha=0.7)
             ax2.axhline(30, color='green', linestyle=':', alpha=0.7)
@@ -225,6 +224,15 @@ def parse_exact_pub_date(pub_date_str):
         return dt.astimezone(IST)
     except Exception:
         return datetime.now(IST)
+
+def is_market_hours():
+    """९:१५ AM ते ३:३० PM मार्केट चालू वेळ तपासणे"""
+    now = datetime.now(IST)
+    if now.weekday() >= 5: # शनिवारी/रविवारी बंद
+        return False
+    start = now.replace(hour=9, minute=15, second=0, microsecond=0)
+    end = now.replace(hour=15, minute=30, second=0, microsecond=0)
+    return start <= now <= end
 
 def get_accurate_price(symbol):
     with SuppressStdout():
@@ -268,11 +276,13 @@ def analyze_sentiment(title):
     bullish_kw = [
         "surge", "jump", "rally", "gain", "profit", "up", "growth", "deal", "order", 
         "record", "high", "buy", "rise", "soar", "win", "bullish", "approved", "target", 
-        "dividend", "results", "revenue", "beat", "positive"
+        "dividend", "results", "revenue", "beat", "positive", "peace", "rate cut", "trade deal"
     ]
     bearish_kw = [
         "plunge", "drop", "fall", "loss", "down", "slump", "crash", "fine", "penalty", 
-        "low", "cut", "slash", "bearish", "raid", "resigns", "probe", "debt", "miss", "weak", "negative"
+        "low", "cut", "slash", "bearish", "raid", "resigns", "probe", "debt", "miss", "weak", 
+        "negative", "war", "trump", "crude oil", "crude", "tariff", "sanction", "conflict", 
+        "inflation", "fed hike", "rate hike", "tension", "crisis"
     ]
 
     bull_score = sum(1 for k in bullish_kw if k in t)
@@ -285,7 +295,6 @@ def analyze_sentiment(title):
     
     return "⚪ NEUTRAL", 0
 
-
 def extract_single_stock_only(title):
     upper_title = title.upper()
     found_matches = set()
@@ -296,19 +305,18 @@ def extract_single_stock_only(title):
             found_matches.add((key, symbol))
 
     unique_symbols = set(item[1] for item in found_matches)
+    
     if len(unique_symbols) == 1:
         single_item = list(found_matches)[0]
         return single_item[0], single_item[1]
     
     return None, None
 
-
-# 💡 १. अचूक आणि स्पष्ट ग्लोबल मार्केट सेंटिमेंट लॉजिक
 def fetch_clear_global_sentiment():
     global global_news_log
     headers = {"User-Agent": "Mozilla/5.0"}
     pos_score, neg_score = 0, 0
-    headlines = []
+    top_title, top_link = "Global markets stable", ""
 
     for url in GLOBAL_NEWS_FEEDS:
         try:
@@ -322,46 +330,47 @@ def fetch_clear_global_sentiment():
 
                 for item in items[:5]:
                     title = item.title.text.strip() if item.title else ""
-                    if title and title not in headlines:
-                        headlines.append(title)
+                    link = item.link.text.strip() if item.link else ""
+                    if title:
                         sent, intensity = analyze_sentiment(title)
                         if "POSITIVE" in sent:
                             pos_score += (intensity + 1)
                         elif "NEGATIVE" in sent:
                             neg_score += (intensity + 1)
+                        if top_title == "Global markets stable":
+                            top_title, top_link = title, link
         except Exception:
             pass
 
     net_score = pos_score - neg_score
     if net_score >= 2:
         status = "🟢 POSITIVE (BULLISH)"
-        reason = f"ग्लोबल बाजारात {pos_score} पॉझिटिव्ह न्युज ट्रिगर्स (तेजीचे संकेत) आणि {neg_score} निगेटिव्ह न्युज ट्रिगर्स (मंदीचे दबाव) आढळले आहेत."
+        reason = f"Global cues are bullish (+{pos_score} positive triggers vs -{neg_score} negative cues)."
     elif net_score <= -2:
         status = "🔴 NEGATIVE (BEARISH)"
-        reason = f"ग्लोबल बाजारात {neg_score} निगेटिव्ह न्युज ट्रिगर्समुळे विक्रीचा दबाव आहे (फक्त {pos_score} पॉझिटिव्ह ट्रिगर्स)."
+        reason = f"Global market pressure (+{neg_score} negative triggers vs -{pos_score} positive cues)."
     else:
         status = "🟡 NEUTRAL (SIDEWAYS)"
-        reason = f"ग्लोबल बाजारात दोन्ही बाजूने समतोल बातम्या आहेत ({pos_score} पॉझिटिव्ह vs {neg_score} निगेटिव्ह ट्रिगर्स)."
+        reason = f"Balanced global factors (+{pos_score} positive / -{neg_score} negative triggers)."
 
-    top_title = headlines[0] if headlines else "Global markets stable"
-    details = f"Positive Triggers: +{pos_score} | Negative Triggers: -{neg_score} | Net Score: {net_score:+d}"
+    details = f"Positive Score: +{pos_score} | Negative Score: -{neg_score} | Net Score: {net_score:+d}"
     
-    return {
+    sentiment_obj = {
         "status": status,
         "score": net_score,
         "headline": top_title,
+        "link": top_link,
         "reason": reason,
         "details": details,
-        "pos_count": pos_score,
-        "neg_count": neg_score
+        "time": datetime.now(IST).strftime("%I:%M %p")
     }
+    global_news_log.append(sentiment_obj)
+    return sentiment_obj
 
-
-# 💡 २. अचूक आणि स्पष्ट भारतीय मार्केट सेंटिमेंट लॉजिक
 def fetch_indian_market_sentiment():
     headers = {"User-Agent": "Mozilla/5.0"}
     pos_score, neg_score = 0, 0
-    top_headline = "Domestic market cues stable"
+    top_headline, top_link = "Domestic market cues stable", ""
 
     for url in INDIAN_NEWS_FEEDS:
         try:
@@ -375,6 +384,7 @@ def fetch_indian_market_sentiment():
 
                 for item in items[:5]:
                     title = item.title.text.strip() if item.title else ""
+                    link = item.link.text.strip() if item.link else ""
                     if title:
                         sent, intensity = analyze_sentiment(title)
                         if "POSITIVE" in sent:
@@ -382,112 +392,29 @@ def fetch_indian_market_sentiment():
                         elif "NEGATIVE" in sent:
                             neg_score += (intensity + 1)
                         if top_headline == "Domestic market cues stable" and ("market" in title.lower() or "nifty" in title.lower()):
-                            top_headline = title
+                            top_headline, top_link = title, link
         except Exception:
             pass
 
     net_score = pos_score - neg_score
     if net_score >= 2:
         status = "🟢 POSITIVE (BULLISH)"
-        reason = f"भारतीय बाजारात {pos_score} पॉझिटिव्ह न्युज ट्रिगर्समुळे खरेदीचा चांगला जोर दिसून येत आहे."
+        reason = f"Strong domestic buying (+{pos_score} positive triggers)"
     elif net_score <= -2:
         status = "🔴 NEGATIVE (BEARISH)"
-        reason = f"भारतीय बाजारात {neg_score} निगेटिव्ह न्युज ट्रिगर्समुळे विक्रीचा दबाव निर्माण झाला आहे."
+        reason = f"Domestic market pressure (+{neg_score} negative triggers)"
     else:
         status = "🟡 NEUTRAL (SIDEWAYS)"
-        reason = f"भारतीय बाजारात संमिश्र बातम्या आहेत ({pos_score} पॉझिटिव्ह / {neg_score} निगेटिव्ह घडामोडी)."
+        reason = f"Mixed domestic news flow (+{pos_score} positive / -{neg_score} negative factors)"
 
     return {
         "status": status,
         "score": net_score,
         "headline": top_headline,
-        "reason": reason,
-        "pos_count": pos_score,
-        "neg_count": neg_score
+        "link": top_link,
+        "reason": reason
     }
 
-
-# 💡 ३. चालू घडामोडींवरून पुढे काय घडण्याची शक्यता आहे (Future Outlook Logic)
-def generate_future_outlook(global_score, indian_score, macro_data):
-    net_score = global_score + indian_score
-    vix_val = macro_data.get("India VIX", {}).get("price", 0.0)
-
-    if net_score >= 3:
-        outlook = "🚀 <b>मजबूत तेजीचा ट्रेंड (Strong Bullish Continuation):</b> जागतिक आणि स्थानिक घडामोडी अत्यंत सकारात्मक असल्याने बाजारात मोठा खरेदीचा ओघ राहील. कॉल (CE) पर्यायांमध्ये चांगला मोमेंटम मिळण्याची शक्यता आहे."
-    elif net_score <= -3:
-        outlook = "💥 <b>मंदीचा दबाव (Bearish Pressure Expected):</b> नकारात्मक बातम्यांमुळे बाजारात नफावसुली किंवा घसरण होऊ शकते. पुट (PE) पर्यायांकडे कल राहू शकतो. स्टॉपलॉस कडक ठेवा."
-    elif vix_val > 18.0:
-        outlook = "⚠️ <b>उच्च व्होलाटिलिटी (High Volatility Ahead):</b> India VIX उच्च पातळीवर असल्याने बाजारात दोन्ही बाजूंना मोठे स्पीड मूव्ह्स येऊ शकतात. योग्य ब्रेकआऊटची वाट पाहूनच ट्रेड घ्या."
-    else:
-        outlook = "⚖️ <b>रेंजबाऊंड / साईडवेज मार्केट (Consolidation Phase):</b> बातम्यांचा समतोल असल्यामुळे बाजार विशिष्ट रेंजमध्ये ट्रेड करण्याची शक्यता आहे. ब्रेकआऊटवर (+) सिग्नल फॉलो करा."
-
-    return outlook
-
-
-def predict_index_direction(symbol, display_name, global_score=0, indian_score=0):
-    net_news_score = global_score + indian_score
-
-    with SuppressStdout():
-        try:
-            ticker = yf.Ticker(symbol)
-            df = ticker.history(period="1d", interval="3m")
-            if not df.empty and len(df) >= 10:
-                df["EMA_9"] = EMAIndicator(close=df["Close"], window=9).ema_indicator()
-                df["EMA_26"] = EMAIndicator(close=df["Close"], window=26).ema_indicator()
-                df["RSI_14"] = RSIIndicator(close=df["Close"], window=14).rsi()
-
-                row_now = df.iloc[-1]
-                price = float(row_now["Close"])
-                rsi = float(row_now["RSI_14"])
-                ema9 = float(row_now["EMA_9"])
-                ema26 = float(row_now["EMA_26"])
-
-                tech_bullish = (ema9 > ema26) and (rsi >= 50)
-                tech_bearish = (ema9 < ema26) and (rsi <= 50)
-
-                if tech_bullish and net_news_score >= 2:
-                    status_str = "🟢 STRONG BULLISH (+)"
-                    prediction = "🔥 High Conviction CE Move! Technical & News align positively."
-                elif tech_bullish and net_news_score <= -2:
-                    status_str = "🟡 WEAK BULLISH (DIVERGENCE)"
-                    prediction = "⚠️ Caution: Technical Bullish, but News flow is Bearish."
-                elif tech_bearish and net_news_score <= -2:
-                    status_str = "🔴 STRONG BEARISH (-)"
-                    prediction = "💥 High Conviction PE Move! Technical & News Pressure Combined."
-                elif tech_bearish and net_news_score >= 2:
-                    status_str = "🟡 WEAK BEARISH (DIVERGENCE)"
-                    prediction = "⚠️ Caution: Technical Bearish, but News flow is Positive."
-                elif tech_bullish:
-                    status_str = "🟢 BULLISH (+) SIGNAL ACTIVE"
-                    prediction = "🚀 Upside Momentum Expected towards Next Resistance (CALL/CE)"
-                elif tech_bearish:
-                    status_str = "🔴 BEARISH (+) SIGNAL ACTIVE"
-                    prediction = "📉 Downside Pressure Expected towards Support (PUT/PE)"
-                else:
-                    status_str = "⚪ NO FRESH SIGNAL"
-                    prediction = "🟡 Rangebound / Sideways Movement Expected"
-
-                return {
-                    "name": display_name,
-                    "price": price,
-                    "signal_status": status_str,
-                    "prediction": prediction,
-                    "rsi": rsi
-                }
-        except Exception:
-            pass
-
-    price = get_accurate_price(symbol)
-    return {
-        "name": display_name,
-        "price": price,
-        "signal_status": "⚪ NO FRESH SIGNAL",
-        "prediction": "🟡 Neutral / Rangebound",
-        "rsi": 50.0
-    }
-
-
-# 💡 ४. व्हॉल्यूमचा वापर फक्त माहितीसाठी (Informational Only - No Trade Restriction)
 def check_3min_plus_signal(symbol, display_name, is_index=False):
     global last_signal_state, last_alert_candle_time
 
@@ -511,7 +438,6 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
 
             row_prev = df.iloc[-2]
             row_now = df.iloc[-1]
-
             candle_timestamp = str(df.index[-1])
 
             current_close = get_accurate_price(symbol)
@@ -523,16 +449,14 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
             current_vol = float(row_now["Volume"])
             vol_sma = float(row_now["Vol_SMA"]) if not pd.isna(row_now["Vol_SMA"]) else 0.0
 
-            # 🛑 व्हॉल्यूमचा वापर फक्त माहिती दाखवण्यासाठी (Signal restriction हटवले आहे)
             vol_ratio = (current_vol / vol_sma) if vol_sma > 0 else 1.0
-            vol_info_str = "📈 Index Data" if is_index else f"📊 Vol: {vol_ratio:.1f}x SMA"
+            vol_info_status = "📈 Index Signal" if is_index else f"📊 Vol: {vol_ratio:.1f}x SMA"
 
             now_ema9 = float(row_now["EMA_9"])
             now_ema26 = float(row_now["EMA_26"])
             prev_ema9 = float(row_prev["EMA_9"])
             prev_ema26 = float(row_prev["EMA_26"])
 
-            # ⚡ EMA Cross + RSI 50 कन्फर्मेशन
             is_bullish_now = (now_ema9 > now_ema26) and (rsi_val >= 50)
             is_bearish_now = (now_ema9 < now_ema26) and (rsi_val <= 50)
 
@@ -544,7 +468,6 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
 
             is_fresh_signal = (fresh_bullish or fresh_bearish) and (current_direction != prev_direction)
 
-            # 🛑 डुप्लिकेट अलर्ट रोखणे (Same Candle Cache)
             if is_fresh_signal and current_direction != "NONE":
                 if last_alert_candle_time.get(symbol) == candle_timestamp:
                     return None
@@ -575,7 +498,7 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
                     "target": target,
                     "rsi": rsi_val,
                     "strike": suggested_strike,
-                    "vol_status": vol_info_str,
+                    "vol_status": vol_info_status,
                     "time": datetime.now(IST).strftime("%I:%M:%S %p")
                 }
 
@@ -590,11 +513,10 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
 
     return None
 
-
 def fetch_and_collect_stock_news():
-    global seen_news_titles, news_watched_stocks, day_news_log
+    """मार्केट वेळेत नवीन बातमी आल्यास त्वरित इन्स्टंट न्यूज अलर्ट पाठवणे"""
+    global seen_news_titles, news_watched_stocks, day_news_log, stock_news_tracker
     headers = {"User-Agent": "Mozilla/5.0"}
-    new_news_items = []
 
     for rss_url in INDIAN_NEWS_FEEDS:
         try:
@@ -632,7 +554,18 @@ def fetch_and_collect_stock_news():
                                         news_watched_stocks.add((display_name, yf_symbol))
 
                                         price = get_accurate_price(yf_symbol)
-                                        news_match_score = intensity + 1
+                                        
+                                        if yf_symbol not in stock_news_tracker:
+                                            stock_news_tracker[yf_symbol] = {"pos": 0, "neg": 0, "titles": []}
+
+                                        if "POSITIVE" in sentiment:
+                                            stock_news_tracker[yf_symbol]["pos"] += 1
+                                        else:
+                                            stock_news_tracker[yf_symbol]["neg"] += 1
+
+                                        pos_count = stock_news_tracker[yf_symbol]["pos"]
+                                        neg_count = stock_news_tracker[yf_symbol]["neg"]
+                                        dots_str = ("🟢" * pos_count) + ("🔴" * neg_count)
 
                                         news_obj = {
                                             "stock": display_name,
@@ -640,19 +573,80 @@ def fetch_and_collect_stock_news():
                                             "price": price,
                                             "title": title,
                                             "sentiment": sentiment,
-                                            "score": news_match_score,
                                             "time": pub_time_formatted,
-                                            "link": link
+                                            "link": link,
+                                            "dots": dots_str
                                         }
 
                                         day_news_log.append(news_obj)
-                                        new_news_items.append(news_obj)
+
+                                        # ⚡ बातमी प्रसिद्ध होताच त्वरित स्वतंत्र इन्स्टंट न्यूज अलर्ट टेलिग्रामवर पाठवणे
+                                        if is_market_hours():
+                                            link_html = f'<a href="{link}">{title}</a>' if link else f'<i>{title}</i>'
+                                            news_alert_msg = (
+                                                f"📰 <b>LIVE STOCK NEWS ALERT</b>\n"
+                                                f"🏢 <b>#{display_name}</b> | {dots_str}\n"
+                                                f"═════════════════════════\n"
+                                                f"• 📰 <b>Headline:</b> {link_html}\n"
+                                                f"• 📊 <b>Sentiment:</b> {sentiment}\n"
+                                                f"• ⏰ <b>Time:</b> {pub_time_formatted}\n"
+                                                f"• 💰 <b>Price:</b> ₹{price:,.2f}\n"
+                                                f"═════════════════════════\n"
+                                                f"🤖 <i>Shambhu's Live Precision Radar Engine</i>"
+                                            )
+                                            send_telegram_alert(news_alert_msg)
 
         except Exception:
             pass
 
-    return new_news_items
+# 🎯 (+) SIGN डिटेक्ट झाल्यावर ताबडतोब पाठवण्यासाठी इन्स्टंट अलर्ट फंक्शन
+def send_instant_plus_signal_alert(sig):
+    now_str = datetime.now(IST).strftime("%d-%b-%Y | %I:%M:%S %p")
+    
+    matched_news = [n for n in day_news_log if n['stock'] == sig['name']]
+    if matched_news:
+        latest_n = matched_news[-1]
+        news_html = f'<a href="{latest_n["link"]}">{latest_n["title"]}</a>' if latest_n.get('link') else f'<i>{latest_n["title"]}</i>'
+        news_sent = latest_n['sentiment']
+    else:
+        news_html = "<i>No Recent Specific News (Pure Technical Breakout)</i>"
+        news_sent = "⚪ NEUTRAL"
 
+    msg = (
+        f"⚡ <b>[INSTANT LIVE (+) SIGN ALERT]</b> ⚡\n"
+        f"📅 <i>{now_str}</i>\n"
+        f"═════════════════════════\n\n"
+        f"🔥 <b>#{sig['name']}</b> ({sig['sentiment']})\n"
+        f"• 📰 <b>Stock News:</b> {news_html}\n"
+        f"• 📊 <b>News Sentiment:</b> {news_sent}\n"
+        f"• ⚡ <b>+ Sign Status:</b> ✅ DETECTED ({sig['action']})\n"
+        f"• 🔊 <b>Volume Info:</b> {sig['vol_status']}\n"
+        f"• 📈 <b>RSI (3m):</b> {sig['rsi']:.1f}\n"
+        f"• 💰 <b>Current Price:</b> ₹{sig['price']:,.2f}\n"
+    )
+    if sig['strike'] != "N/A":
+        msg += f"• 🎯 <b>Suggested Option:</b> <code>{sig['strike']}</code>\n"
+
+    msg += (
+        f"• 🛑 <b>SL:</b> ₹{sig['sl']:,.2f} | 🎯 <b>Target:</b> ₹{sig['target']:,.2f}\n"
+        f"═════════════════════════\n"
+        f"🤖 <i>Shambhu's Live Precision Radar Engine</i>"
+    )
+
+    send_telegram_alert(msg)
+
+    # ३-मिनिट आलेख फोटो स्वरूपात ताबडतोब पाठवणे
+    chart_img = generate_chart_image(sig['symbol'], sig['name'])
+    if chart_img:
+        caption = (
+            f"📊 <b>{sig['name']}</b> ({sig['sentiment']})\n"
+            f"⚡ <b>Action:</b> {sig['action']} | 💰 <b>Price:</b> ₹{sig['price']:,.2f}\n"
+            f"🛑 <b>SL:</b> ₹{sig['sl']:,.2f} | 🎯 <b>Target:</b> ₹{sig['target']:,.2f}\n"
+            f"📈 <b>RSI:</b> {sig['rsi']:.1f} | 🔊 {sig['vol_status']}"
+        )
+        send_telegram_photo(chart_img, caption=caption)
+
+# ==================== SCHEDULED CONSOLIDATED REPORTS ====================
 
 def send_845_am_premarket_report():
     now_ist = datetime.now(IST)
@@ -673,8 +667,12 @@ def send_845_am_premarket_report():
     msg += "\n-----------------------------------------\n\n"
     msg += f"🌐 <b>GLOBAL MARKET MOOD:</b> {g_sent['status']}\n"
     msg += f"• <b>Reason:</b> <i>{g_sent['reason']}</i>\n"
-    msg += f"• <b>Details:</b> <code>{g_sent['details']}</code>\n"
-    msg += f"• <b>Headline:</b> <i>{g_sent['headline']}</i>\n"
+    msg += f"• <b>Details:</b> <i>{g_sent['details']}</i>\n"
+    
+    if g_sent.get('link'):
+        msg += f"• <b>Key Headline:</b> <a href=\"{g_sent['link']}\">{g_sent['headline']}</a>\n"
+    else:
+        msg += f"• <b>Key Headline:</b> <i>{g_sent['headline']}</i>\n"
 
     vix_pct = macros.get("India VIX", {}).get("change_pct", 0)
     if vix_pct > 3.0:
@@ -691,7 +689,6 @@ def send_845_am_premarket_report():
     msg += "🤖 <i>Shambhu's Live Precision Radar Engine</i>"
 
     send_telegram_alert(msg)
-
 
 def send_910_am_table_report():
     now_ist = datetime.now(IST)
@@ -710,6 +707,7 @@ def send_910_am_table_report():
 
                 for item in items[:30]:
                     title = item.title.text.strip() if item.title else ""
+                    link = item.link.text.strip() if item.link else ""
                     pub_date_str = item.pubDate.text.strip() if item.pubDate else ""
 
                     pub_dt = parse_exact_pub_date(pub_date_str)
@@ -720,27 +718,27 @@ def send_910_am_table_report():
                         if display_name and yf_symbol:
                             sent, _ = analyze_sentiment(title)
                             if "NEUTRAL" not in sent:
-                                news_24h.append({"stock": display_name, "sentiment": sent})
+                                news_24h.append({"stock": display_name, "sentiment": sent, "title": title, "link": link})
                                 news_watched_stocks.add((display_name, yf_symbol))
         except Exception:
             pass
 
     unique_table = {}
     for item in news_24h:
-        unique_table[item["stock"]] = item["sentiment"]
+        unique_table[item["stock"]] = item
 
     msg = f"📊 <b>09:10 AM DAILY SPECIFIC STOCK NEWS REPORT</b> 📊\n"
     msg += f"📅 <i>{now_ist.strftime('%d-%b-%Y')}</i>\n"
     msg += "═════════════════════════\n\n"
 
     if unique_table:
-        msg += "<pre>"
-        msg += f"{'STOCK NAME':<18} | {'SENTIMENT':<10}\n"
-        msg += "-----------------------------------\n"
-        for st, sn in unique_table.items():
-            msg += f"{st[:17]:<18} | {sn:<10}\n"
-        msg += "</pre>\n\n"
-        msg += f"🔍 <i>Total {len(unique_table)} specific stocks added to Radar Scanning!</i>\n"
+        for st, item in unique_table.items():
+            if item.get('link'):
+                msg += f"• <b>#{st}:</b> <a href=\"{item['link']}\">{item['title']}</a> ({item['sentiment']})\n\n"
+            else:
+                msg += f"• <b>#{st}:</b> {item['title']} ({item['sentiment']})\n\n"
+        
+        msg += f"🔍 <i>Total {len(unique_table)} specific stocks added to 3-Min Chart Radar!</i>\n"
     else:
         msg += "ℹ️ <i>No specific stock news detected in the last 24 hours.</i>\n"
 
@@ -748,7 +746,6 @@ def send_910_am_table_report():
     msg += "🤖 <i>Shambhu's Live Precision Radar Engine</i>"
 
     send_telegram_alert(msg)
-
 
 def send_330_pm_closing_summary():
     now_ist = datetime.now(IST)
@@ -760,12 +757,17 @@ def send_330_pm_closing_summary():
     g_sent = fetch_clear_global_sentiment()
     msg += f"🌐 <b>GLOBAL MARKET MOOD:</b> {g_sent['status']}\n"
     msg += f"• <b>Reason:</b> <i>{g_sent['reason']}</i>\n"
-    msg += f"• <b>Cue:</b> <i>{g_sent['headline']}</i>\n"
+    if g_sent.get('link'):
+        msg += f"• <b>Cue:</b> <a href=\"{g_sent['link']}\">{g_sent['headline']}</a>\n"
+    else:
+        msg += f"• <b>Cue:</b> <i>{g_sent['headline']}</i>\n"
     msg += "\n-----------------------------------------\n\n"
 
     ind_sent = fetch_indian_market_sentiment()
     msg += f"🇮🇳 <b>INDIAN MARKET MOOD:</b> {ind_sent['status']}\n"
     msg += f"• <b>Reason:</b> <i>{ind_sent['reason']}</i>\n"
+    if ind_sent.get('link'):
+        msg += f"• <b>Domestic Cue:</b> <a href=\"{ind_sent['link']}\">{ind_sent['headline']}</a>\n"
     msg += "\n-----------------------------------------\n\n"
 
     msg += "📈 <b>INDICES CLOSING PRICES:</b>\n"
@@ -776,8 +778,12 @@ def send_330_pm_closing_summary():
     msg += f"📰 <b>TODAY'S SPECIFIC STOCK NEWS ({len(day_news_log)}):</b>\n"
     if day_news_log:
         for item in day_news_log[-8:]:
-            msg += f"• <b>#{item['stock']}</b> ({item['time']}): {item['sentiment']}\n"
-            msg += f"  <i>{item['title'][:60]}...</i>\n"
+            dots = item.get('dots', '')
+            msg += f"• <b>#{item['stock']}</b> ({item['time']}) | {dots} {item['sentiment']}\n"
+            if item.get('link'):
+                msg += f"  └ 📰 <a href=\"{item['link']}\">{item['title']}</a>\n"
+            else:
+                msg += f"  └ 📰 <i>{item['title']}</i>\n"
     else:
         msg += "• ℹ️ No specific single-stock news tracked today.\n"
     msg += "\n-----------------------------------------\n\n"
@@ -798,7 +804,7 @@ def send_330_pm_closing_summary():
     day_news_log.clear()
     day_plus_signals_log.clear()
     global_news_log.clear()
-
+    stock_news_tracker.clear()
 
 # ==================== MAIN RADAR ENGINE ====================
 def scan_and_alert():
@@ -808,7 +814,7 @@ def scan_and_alert():
     current_time = now_ist.strftime("%H:%M")
     today_date = now_ist.strftime("%Y-%m-%d")
 
-    # Timed Reports
+    # 🎯 १. वेळेनुसार पाठवायचे Consolidated Daily Milestone Reports
     if current_time == "08:45" and last_sent_845_date != today_date:
         send_845_am_premarket_report()
         last_sent_845_date = today_date
@@ -821,107 +827,22 @@ def scan_and_alert():
         send_330_pm_closing_summary()
         last_sent_330_date = today_date
 
-    # 1. न्युज फेच करा
+    # 🎯 २. लाईव्ह बातम्या फेच करणे (नवीन बातमी आल्यास त्वरित इन्स्टंट अलर्ट पाठवला जातो)
     fetch_and_collect_stock_news()
 
-    detected_plus_signals = []
+    # 🎯 ३. लाईव्ह मार्केट सुरू असताना (+) SIGN ब्रेकआउट डिटेक्ट झाल्यास ताबडतोब अलर्ट पाठवणे
+    if is_market_hours():
+        # इंडायसेस तपासणे
+        for index_sym, index_name in INDICES_MAP.items():
+            sig = check_3min_plus_signal(index_sym, index_name, is_index=True)
+            if sig:
+                send_instant_plus_signal_alert(sig)
 
-    # 2. इंडायसेससाठी ३-मिनिट + सिग्नल स्कॅन
-    for index_sym, index_name in INDICES_MAP.items():
-        sig = check_3min_plus_signal(index_sym, index_name, is_index=True)
-        if sig:
-            detected_plus_signals.append(sig)
-
-    # 3. स्टॉक्ससाठी ३-मिनिट + सिग्नल स्कॅन
-    for s_name, s_sym in list(news_watched_stocks):
-        sig = check_3min_plus_signal(s_sym, s_name, is_index=False)
-        if sig:
-            detected_plus_signals.append(sig)
-
-    # 🎯 जेव्हा (+) SIGN मिळेल तेव्हा इन्स्टंट टेक्स्ट + ऑटो-चार्ट फोटो पाठवणे
-    if detected_plus_signals:
-        now_str = datetime.now(IST).strftime("%d-%b-%Y | %I:%M:%S %p")
-        macros = fetch_macro_indicators()
-
-        msg = f"⚡ <b>[SINGLE CONSOLIDATED MARKET RADAR ALERT]</b> ⚡\n"
-        msg += f"📅 <i>{now_str}</i>\n"
-        msg += "═════════════════════════\n\n"
-
-        # SECTION 1: GLOBAL MARKET MOOD & CLEAR REASON
-        g_cue = fetch_clear_global_sentiment()
-        msg += "🌐 <b>1. GLOBAL MARKET MOOD & SENTIMENT:</b>\n"
-        msg += f"• <b>Status:</b> {g_cue['status']}\n"
-        msg += f"• <b>Exact Triggers:</b> <code>{g_cue['details']}</code>\n"
-        msg += f"• <b>Clear Reason:</b> <i>{g_cue['reason']}</i>\n"
-        msg += f"• <b>Key Headline:</b> <i>{g_cue['headline']}</i>\n"
-        msg += "\n-----------------------------------------\n\n"
-
-        # SECTION 2: INDIAN MARKET MOOD & INDICES PREDICTION
-        ind_sent = fetch_indian_market_sentiment()
-        msg += "🇮🇳 <b>2. INDIAN MARKET MOOD & INDICES PREDICTION:</b>\n"
-        msg += f"• <b>Domestic Mood:</b> {ind_sent['status']}\n"
-        msg += f"• <b>Clear Reason:</b> <i>{ind_sent['reason']}</i>\n"
-        msg += f"• <b>Domestic Headline:</b> <i>{ind_sent['headline']}</i>\n\n"
-
-        for idx_sym, idx_name in INDICES_MAP.items():
-            pred = predict_index_direction(idx_sym, idx_name, g_cue['score'], ind_sent['score'])
-            msg += f"• <b>{idx_name}:</b> ₹{pred['price']:,.2f}\n"
-            msg += f"  └ <b>Status:</b> {pred['signal_status']}\n"
-            msg += f"  └ <b>Prediction:</b> <i>{pred['prediction']}</i>\n"
-        msg += "\n-----------------------------------------\n\n"
-
-        # SECTION 3: (+) SIGN DETECTED DETAILS WITH CLICKABLE NEWS LINK
-        msg += f"🔥 <b>3. (+) SIGN DETECTED DETAILS ({len(detected_plus_signals)}):</b>\n\n"
-        
-        for idx, sig in enumerate(detected_plus_signals, 1):
-            msg += f"<b>{idx}. #{sig['name']}</b> ({sig['sentiment']})\n"
-            
-            matched_news = [n for n in day_news_log if n['stock'] == sig['name']]
-            if matched_news:
-                latest_n = matched_news[-1]
-                if latest_n.get('link'):
-                    msg += f"   • 📰 <b>Stock News:</b> <a href=\"{latest_n['link']}\">{latest_n['title']}</a>\n"
-                else:
-                    msg += f"   • 📰 <b>Stock News:</b> <i>{latest_n['title']}</i>\n"
-                msg += f"   • 📊 <b>News Sentiment:</b> {latest_n['sentiment']}\n"
-            else:
-                msg += f"   • 📰 <b>Stock News:</b> <i>No Recent Specific News (Technical Breakout)</i>\n"
-
-            msg += f"   • ⚡ <b>+ Sign Status:</b> ✅ DETECTED ({sig['action']})\n"
-            msg += f"   • 🔊 <b>Volume Info:</b> {sig['vol_status']}\n"
-            msg += f"   • 📈 <b>RSI (3m):</b> {sig['rsi']:.1f}\n"
-            msg += f"   • 💰 <b>Current Price:</b> ₹{sig['price']:,.2f}\n"
-            
-            if sig['strike'] != "N/A":
-                msg += f"   • 🎯 <b>Suggested Option:</b> <code>{sig['strike']}</code>\n"
-                
-            msg += f"   • 🛑 <b>SL:</b> ₹{sig['sl']:,.2f} | 🎯 <b>Target:</b> ₹{sig['target']:,.2f}\n\n"
-
-        msg += "-----------------------------------------\n\n"
-
-        # SECTION 4: FUTURE OUTLOOK & IMPACT ANALYSIS (चालू घडामोडींवरून पुढे काय घडण्याची शक्यता आहे)
-        future_analysis = generate_future_outlook(g_cue['score'], ind_sent['score'], macros)
-        msg += "🔮 <b>4. FUTURE OUTLOOK & MARKET ANALYSIS (चालू घडामोडींचा पुढील प्रभाव):</b>\n"
-        msg += f"• <i>{future_analysis}</i>\n\n"
-
-        msg += "═════════════════════════\n"
-        msg += "🤖 <i>Shambhu's Live Precision Radar Engine</i>"
-
-        # १. टेलिग्रामवर मजकूर पाठवणे
-        send_telegram_alert(msg)
-
-        # २. (+) Sign मिळालेल्या प्रत्येक स्टॉकचा Auto Chart Photo Telegram वर पाठवणे
-        for sig in detected_plus_signals:
-            chart_img = generate_chart_image(sig['symbol'], sig['name'])
-            if chart_img:
-                caption = (
-                    f"📊 <b>{sig['name']}</b> ({sig['sentiment']})\n"
-                    f"⚡ <b>Action:</b> {sig['action']} | 💰 <b>Price:</b> ₹{sig['price']:,.2f}\n"
-                    f"🛑 <b>SL:</b> ₹{sig['sl']:,.2f} | 🎯 <b>Target:</b> ₹{sig['target']:,.2f}\n"
-                    f"📈 <b>RSI:</b> {sig['rsi']:.1f} | 🔊 {sig['vol_status']}"
-                )
-                send_telegram_photo(chart_img, caption=caption)
-
+        # स्टॉक्स तपासणे
+        for s_name, s_sym in list(news_watched_stocks):
+            sig = check_3min_plus_signal(s_sym, s_name, is_index=False)
+            if sig:
+                send_instant_plus_signal_alert(sig)
 
 def run_startup_initialization():
     print("⏳ Initializing Radar Engine Baseline States...")
@@ -930,11 +851,10 @@ def run_startup_initialization():
         if sig:
             last_signal_state[idx_sym] = sig["direction"]
 
-    send_telegram_alert("🚀 <b>Radar Engine Active!</b>\n<i>Instant (+) Signal, Future Outlook & Auto-Chart System Ready...</i>")
-
+    send_telegram_alert("🚀 <b>Radar Engine Active!</b>\n<i>Instant Live News & (+) Sign Alert Engine Ready...</i>")
 
 if __name__ == "__main__":
-    print("🚀 Starting Shambhu's Ordered Radar Engine...")
+    print("🚀 Starting Shambhu's Radar Engine...")
 
     t = threading.Thread(target=run_server)
     t.daemon = True
