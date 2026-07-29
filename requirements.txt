@@ -9,4 +9,4 @@ lxml
 pyttsx3
 flask-socketio
 eventlet
-openai
+openai==0.28
