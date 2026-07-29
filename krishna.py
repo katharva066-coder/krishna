@@ -77,13 +77,13 @@ class Config:
         # Performance
         self.MAX_WORKERS = int(os.getenv("MAX_WORKERS", 10))
         self.CACHE_TTL = int(os.getenv("CACHE_TTL", 5))
-        self.BATCH_INTERVAL = 60  # Send alerts every 60 seconds
+        self.BATCH_INTERVAL = 60
         
         # Priority Configuration
         self.HIGH_PRIORITY_STOCKS = ["RELIANCE.NS", "HDFCBANK.NS", "INFY.NS", "TATAMOTORS.NS", "BAJFINANCE.NS"]
         self.MEDIUM_PRIORITY_STOCKS = ["ICICIBANK.NS", "KOTAKBANK.NS", "SBIN.NS", "LT.NS"]
         
-        # Adaptive Intervals (seconds)
+        # Adaptive Intervals
         self.HIGH_PRIORITY_INTERVAL = 8
         self.MEDIUM_PRIORITY_INTERVAL = 15
         self.LOW_PRIORITY_INTERVAL = 30
@@ -104,7 +104,6 @@ IST = config.IST
 # ==================== DATA CLASSES ====================
 @dataclass
 class SignalData:
-    """Structure for signal data"""
     name: str
     symbol: str
     direction: str
@@ -127,7 +126,6 @@ class SignalData:
 
 @dataclass
 class NewsData:
-    """Structure for news data"""
     stock: str
     symbol: str
     price: float
@@ -140,7 +138,6 @@ class NewsData:
 
 @dataclass
 class TradeData:
-    """Structure for active trades"""
     symbol: str
     direction: str
     target: float
@@ -151,19 +148,13 @@ class TradeData:
     exit_price: Optional[float] = None
     result: Optional[str] = None
 
-# ==================== SMART CACHE SYSTEM ====================
+# ==================== SMART CACHE ====================
 class SmartCache:
-    """Intelligent caching with priority-based TTL"""
     def __init__(self):
         self.cache: Dict[str, Tuple[float, float]] = {}
-        self.priority_ttl = {
-            'high': 10,
-            'medium': 8,
-            'low': 5
-        }
+        self.priority_ttl = {'high': 10, 'medium': 8, 'low': 5}
         
     def get_priority(self, symbol: str) -> str:
-        """Get priority level for symbol"""
         if symbol in config.HIGH_PRIORITY_STOCKS:
             return 'high'
         elif symbol in config.MEDIUM_PRIORITY_STOCKS:
@@ -171,7 +162,6 @@ class SmartCache:
         return 'low'
     
     def get(self, symbol: str) -> Optional[float]:
-        """Get cached price if valid"""
         if symbol in self.cache:
             price, timestamp = self.cache[symbol]
             ttl = self.priority_ttl[self.get_priority(symbol)]
@@ -182,34 +172,23 @@ class SmartCache:
         return None
         
     def set(self, symbol: str, price: float):
-        """Cache price with timestamp"""
         self.cache[symbol] = (price, time.time())
         
     def clear(self):
-        """Clear all cache"""
         self.cache.clear()
 
 price_cache = SmartCache()
 
 # ==================== PERFORMANCE MONITOR ====================
 class PerformanceMonitor:
-    """Monitor system performance metrics"""
     def __init__(self):
         self.metrics = {
-            'scans': 0,
-            'signals_detected': 0,
-            'news_processed': 0,
-            'macro_news_processed': 0,
-            'api_errors': 0,
-            'avg_scan_time': 0,
-            'cache_hits': 0,
-            'cache_misses': 0,
-            'high_priority_signals': 0,
-            'medium_priority_signals': 0,
-            'low_priority_signals': 0,
-            'win_rate': 0,
-            'total_trades': 0,
-            'winning_trades': 0
+            'scans': 0, 'signals_detected': 0, 'news_processed': 0,
+            'macro_news_processed': 0, 'api_errors': 0, 'avg_scan_time': 0,
+            'cache_hits': 0, 'cache_misses': 0,
+            'high_priority_signals': 0, 'medium_priority_signals': 0,
+            'low_priority_signals': 0, 'win_rate': 0,
+            'total_trades': 0, 'winning_trades': 0
         }
         self.scan_times: List[float] = []
         self.start_time = time.time()
@@ -360,34 +339,25 @@ pool_manager = ThreadPoolManager(max_workers=config.MAX_WORKERS)
 class SmartNewsFilter:
     def __init__(self):
         self.trusted_sources = {
-            'reuters.com': 10,
-            'bloomberg.com': 10,
-            'moneycontrol.com': 9,
-            'economictimes.com': 8,
-            'livemint.com': 8,
-            'business-standard.com': 7,
-            'cnbc.com': 9,
-            'investing.com': 7
+            'reuters.com': 10, 'bloomberg.com': 10, 'moneycontrol.com': 9,
+            'economictimes.com': 8, 'livemint.com': 8, 'business-standard.com': 7,
+            'cnbc.com': 9, 'investing.com': 7
         }
         self.blacklist_keywords = ['advertisement', 'sponsored', 'promotion', 'click here']
         
     def get_quality_score(self, link: str, title: str) -> int:
         score = 5
-        
         for source, quality in self.trusted_sources.items():
             if source in link.lower():
                 score = quality
                 break
-        
         for keyword in self.blacklist_keywords:
             if keyword in title.lower():
                 score -= 3
-        
         if len(title) > 50:
             score += 2
         if len(title) > 100:
             score += 1
-            
         return max(1, min(10, score))
     
     def should_alert(self, news: Dict) -> bool:
@@ -517,13 +487,10 @@ class SignalConfidenceScorer:
                 df = ticker.history(period="5d")
                 if df.empty:
                     return 0
-                
                 price_change = df['Close'].pct_change().mean() * 100
                 price_score = max(-30, min(30, price_change * 10))
-                
                 volume_change = df['Volume'].pct_change().mean() * 100
                 volume_score = max(-20, min(20, volume_change * 5))
-                
                 rsi = RSIIndicator(close=df['Close'], window=14).rsi().iloc[-1]
                 if not pd.isna(rsi):
                     if rsi > 70:
@@ -534,23 +501,19 @@ class SignalConfidenceScorer:
                         rsi_score = (rsi - 50) * 0.4
                 else:
                     rsi_score = 0
-                
                 total_score = price_score + volume_score + rsi_score
                 return max(-100, min(100, int(total_score)))
-                
         except:
             return 0
     
     def update_history(self, symbol: str, result: str):
         if symbol not in self.history:
             self.history[symbol] = {'wins': 0, 'losses': 0, 'total': 0}
-        
         self.history[symbol]['total'] += 1
         if result == 'WIN':
             self.history[symbol]['wins'] += 1
         else:
             self.history[symbol]['losses'] += 1
-        
         self.history[symbol]['accuracy'] = (self.history[symbol]['wins'] / self.history[symbol]['total']) * 100
 
 confidence_scorer = SignalConfidenceScorer()
@@ -564,22 +527,15 @@ class AlertBatcher:
         self.max_batch_size = 5
         
     def add_alert(self, alert_type: str, data: Dict):
-        self.buffer.append({
-            'type': alert_type,
-            'data': data,
-            'timestamp': time.time()
-        })
-        
+        self.buffer.append({'type': alert_type, 'data': data, 'timestamp': time.time()})
         if len(self.buffer) >= self.max_batch_size or (time.time() - self.last_sent) > self.batch_interval:
             self.send_batch()
     
     def send_batch(self):
         if not self.buffer:
             return
-        
         signals = [b for b in self.buffer if b['type'] == 'signal']
         news = [b for b in self.buffer if b['type'] == 'news']
-        
         if signals:
             msg = "📦 **SIGNAL BATCH** 📦\n═════════════════════════\n\n"
             for signal in signals:
@@ -591,7 +547,6 @@ class AlertBatcher:
                 msg += f"📊 Confidence: {data.get('confidence', 0)}%\n\n"
             msg += "═════════════════════════"
             send_telegram_alert(msg)
-        
         if news:
             msg = "📰 **NEWS BATCH** 📰\n═════════════════════════\n\n"
             for news_item in news:
@@ -603,13 +558,12 @@ class AlertBatcher:
             if len(msg) > 100:
                 msg += "═════════════════════════"
                 send_telegram_alert(msg)
-        
         self.buffer = []
         self.last_sent = time.time()
 
 alert_batcher = AlertBatcher()
 
-# ==================== EXISTING CONFIGURATIONS ====================
+# ==================== CONFIGURATIONS ====================
 INDICES_MAP = {
     "^NSEI": "NIFTY 50",
     "^NSEBANK": "BANK NIFTY",
@@ -617,21 +571,15 @@ INDICES_MAP = {
 }
 
 CORE_STOCKS_MAP = {
-    "RELIANCE": "RELIANCE.NS",
-    "HDFC BANK": "HDFCBANK.NS",
-    "INFOSYS": "INFY.NS",
-    "TATA MOTORS": "TATAMOTORS.NS",
-    "BAJAJ FINANCE": "BAJFINANCE.NS",
-    "L&T": "LT.NS"
+    "RELIANCE": "RELIANCE.NS", "HDFC BANK": "HDFCBANK.NS",
+    "INFOSYS": "INFY.NS", "TATA MOTORS": "TATAMOTORS.NS",
+    "BAJAJ FINANCE": "BAJFINANCE.NS", "L&T": "LT.NS"
 }
 
 MACRO_TICKERS = {
-    "GIFT Nifty": "^NSEI",
-    "US Dow Futures": "YM=F",
-    "US Nasdaq Futures": "NQ=F",
-    "India VIX": "^INDIAVIX",
-    "Crude Oil (WTI)": "CL=F",
-    "US Dollar Index (DXY)": "DX-Y.NYB"
+    "GIFT Nifty": "^NSEI", "US Dow Futures": "YM=F",
+    "US Nasdaq Futures": "NQ=F", "India VIX": "^INDIAVIX",
+    "Crude Oil (WTI)": "CL=F", "US Dollar Index (DXY)": "DX-Y.NYB"
 }
 
 STOCKS_MAP = {
@@ -681,7 +629,7 @@ GLOBAL_NEWS_FEEDS = [
     "https://www.investing.com/rss/news.rss"
 ]
 
-# ==================== 🆕 UPDATED MACRO_KEYWORDS WITH STRONG SENTIMENT ====================
+# ==================== 🚀 UPDATED MACRO_KEYWORDS WITH 300+ STRONG SENTIMENT KEYWORDS ====================
 MACRO_KEYWORDS = [
     # === CENTRAL BANK & POLICY ===
     "fed", "federal reserve", "fomc", "jerome powell", "interest rate", 
@@ -689,7 +637,9 @@ MACRO_KEYWORDS = [
     "liquidity", "quantitative easing", "rate pause", "ecb", "boe", "boj",
     "fomc meeting", "fed meeting", "fed decision", "fed announcement",
     "rate decision", "policy announcement", "press conference",
-    "powell speech", "testimony", "congress hearing",
+    "powell speech", "testimony", "congress hearing", "central bank",
+    "monetary policy", "policy meeting", "bank of england", "bank of japan",
+    "european central bank", "christine lagarde",
     
     # === ECONOMIC DATA ===
     "cpi", "core cpi", "ppi", "inflation", "gdp", "pmi", "nfp", "nonfarm payroll", 
@@ -700,12 +650,15 @@ MACRO_KEYWORDS = [
     "wholesale inflation", "producer price index", "consumer price index",
     "gross domestic product", "purchasing managers index", "services pmi",
     "manufacturing pmi", "adp employment", "consumer spending", "personal income",
+    "economic data", "economic report", "economic indicator",
     
     # === CURRENCY & BONDS ===
     "dxy", "dollar index", "usdinr", "treasury yield", "bond yield", "10-year yield",
     "fii inflow", "fii outflow", "dii buying", "forex reserves", "gst collection", 
     "union budget", "capex", "currency market", "exchange rate", "rupee", "dollar",
-    "euro", "pound", "yen", "yuan", "foreign exchange",
+    "euro", "pound", "yen", "yuan", "foreign exchange", "reserve bank",
+    "foreign institutional investors", "domestic institutional investors",
+    "capital expenditure", "fiscal policy", "government spending",
     
     # === COMMODITIES & ENERGY ===
     "brent crude", "crude oil", "wti crude", "opec", "opec plus", "natural gas", 
@@ -713,6 +666,7 @@ MACRO_KEYWORDS = [
     "energy prices", "commodity market", "precious metals", "base metals",
     "gold", "silver", "platinum", "palladium", "oil inventory", "rig count",
     "petroleum", "gasoline", "heating oil", "coal", "iron ore", "steel prices",
+    "commodities", "energy sector",
     
     # === GEOPOLITICS & TRADE ===
     "war", "missile", "tariff", "tsunami", "flood", "geopolitical", 
@@ -721,7 +675,7 @@ MACRO_KEYWORDS = [
     "trade agreement", "wto", "world trade organization", "import ban",
     "export ban", "geopolitical tension", "military", "defense", "china",
     "russia", "ukraine", "middle east", "iran", "israel", "gaza",
-    "ceasefire", "peace agreement",
+    "ceasefire", "peace agreement", "global trade", "protectionism",
     
     # === REGULATORY ===
     "sebi", "f&o ban", "circuit breaker", "block deal", "bulk deal",
@@ -730,24 +684,25 @@ MACRO_KEYWORDS = [
     "audit", "compliance", "legal action", "investigation", "sebi order",
     "stock exchange", "nse", "bse", "trading halt", "market intervention",
     
-    # === 🆕 STRONG BULLISH SENTIMENT ===
+    # === 🚀 STRONG BULLISH SENTIMENT ===
     "bull run", "record high", "all-time high", "new high", "breakout",
     "upside", "momentum", "rally", "surge", "soar", "jump", "spike",
     "outperform", "beat estimates", "strong growth", "robust demand",
     "positive outlook", "upgrade", "target raised", "strong earnings",
     "rocket", "skyrocket", "explode", "moon", "parabolic",
-    "breakthrough", "milestone", "landmark", "historic",
+    "breakthrough", "milestone", "landmark", "historic", "bullish",
+    "bull market", "uptrend", "buying", "accumulation", "positive",
     
-    # === 🆕 STRONG BEARISH SENTIMENT ===
+    # === 🔻 STRONG BEARISH SENTIMENT ===
     "bear market", "crash", "plunge", "collapse", "freefall", "meltdown",
     "selloff", "panic selling", "bloodbath", "correction", "downtrend",
     "downside", "weakness", "slump", "drop", "fall", "decline",
     "underperform", "miss estimates", "weak demand", "negative outlook",
     "downgrade", "target cut", "weak earnings", "loss", "default",
-    "tank", "nosedive", "freefall", "annihilate", "wipeout",
-    "scandal", "fraud", "probe", "lawsuit",
+    "tank", "nosedive", "annihilate", "wipeout", "scandal", "fraud",
+    "probe", "lawsuit", "bearish", "sell", "distribution", "negative",
     
-    # === 🆕 CRISIS & EMERGENCY ===
+    # === 🔥 CRISIS & EMERGENCY ===
     "emergency", "crisis", "critical", "urgent", "warning", "alert",
     "bankruptcy", "insolvency", "liquidity crisis", "bank run",
     "systemic risk", "contagion", "default risk", "credit crunch",
@@ -757,24 +712,24 @@ MACRO_KEYWORDS = [
     "natural disaster", "earthquake", "cyclone", "hurricane",
     "pandemic", "outbreak", "lockdown", "shutdown", "curfew",
     
-    # === 🆕 MARKET MOVING EVENTS ===
+    # === 📊 MARKET MOVING EVENTS ===
     "g20", "g7", "imf", "world bank", "summit",
     "presidential election", "election results", "political crisis",
     "politics", "government", "cabinet", "minister", "prime minister",
     
-    # === 🆕 INDICES & MARKETS ===
+    # === 📈 INDICES & MARKETS ===
     "nifty", "sensex", "dow jones", "s&p 500", "nasdaq",
     "nikkei", "hang seng", "dax", "ftse", "cac",
     "brics", "emerging economy", "developing markets", "frontier markets",
     "wall street", "nyse", "london market", "european stocks",
     "asian markets", "china market", "japan market", "hong kong market",
     
-    # === 🆕 CRYPTO & DIGITAL ===
+    # === 💰 CRYPTO & DIGITAL ===
     "bitcoin", "ethereum", "crypto", "blockchain", "digital currency",
     "stablecoin", "regulation", "sec", "cftc", "crypto crash",
     "cryptocurrency", "web3", "metaverse", "quantum computing",
     
-    # === 🆕 SECTOR SPECIFIC ===
+    # === 🏭 SECTOR SPECIFIC ===
     "semiconductor", "chip shortage", "supply chain disruption",
     "manufacturing", "industrial production", "factory orders",
     "housing", "real estate", "construction", "infrastructure",
@@ -784,12 +739,20 @@ MACRO_KEYWORDS = [
     "patent", "vaccine", "medicine", "healthcare",
     "it", "software", "hardware", "cloud", "ai", "artificial intelligence",
     "digital", "cybersecurity", "data center", "it services", "bpm",
+    "banking", "nifty bank", "bank nifty", "psu", "public sector",
+    "defense", "railway", "infrastructure", "power", "oil and gas",
     
-    # === 🆕 HIGH IMPACT WORDS ===
+    # === 📰 HIGH IMPACT WORDS ===
     "shocking", "unexpected", "surprise", "stunning", "dramatic",
-    "historic", "landmark", "milestone", "breakthrough",
     "massive", "huge", "significant", "major", "critical",
-    "immediate", "urgent", "emergency", "warning",
+    "immediate", "urgent", "emergency", "warning", "breaking",
+    "exclusive", "first", "just in", "latest", "update",
+    
+    # === 🔥 EXTRA STRONG SENTIMENT ===
+    "boom", "bust", "recovery", "rebound", "comeback", "resurgence",
+    "crater", "implode", "implosion", "melt-up", "melt-up",
+    "parabolic move", "vertical", "straight up", "straight down",
+    "limit down", "limit up", "circuit", "halt", "suspended",
 ]
 
 # ==================== GLOBAL STATE ====================
@@ -821,7 +784,6 @@ last_sent_330_date = ""
 
 # ==================== TELEGRAM FUNCTIONS ====================
 def send_telegram_alert(message, reply_markup=None):
-    """Send alert to Telegram"""
     url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": config.TELEGRAM_CHAT_ID,
@@ -831,7 +793,6 @@ def send_telegram_alert(message, reply_markup=None):
     }
     if reply_markup:
         payload["reply_markup"] = json.dumps(reply_markup)
-        
     try:
         response = requests.post(url, json=payload, timeout=10)
         if response.status_code != 200:
@@ -841,7 +802,6 @@ def send_telegram_alert(message, reply_markup=None):
         monitor.record_api_error()
 
 def send_telegram_photo(image_bytes, caption=""):
-    """Send photo to Telegram"""
     url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendPhoto"
     files = {"photo": ("chart.png", image_bytes, "image/png")}
     data = {"chat_id": config.TELEGRAM_CHAT_ID, "caption": caption, "parse_mode": "HTML"}
@@ -855,7 +815,6 @@ def send_telegram_photo(image_bytes, caption=""):
 
 # ==================== HELPER FUNCTIONS ====================
 def is_cloud_platform() -> bool:
-    """Check if running on cloud platform (Render/Railway)"""
     return bool(os.environ.get('RENDER') or os.environ.get('RAILWAY') or os.environ.get('RENDER_GIT_COMMIT'))
 
 def generate_chart_image(symbol, display_name):
@@ -865,13 +824,10 @@ def generate_chart_image(symbol, display_name):
             df = ticker.history(period="1d", interval="3m")
             if df.empty or len(df) < 5:
                 return None
-
             df['EMA_9'] = EMAIndicator(close=df['Close'], window=9).ema_indicator()
             df['EMA_26'] = EMAIndicator(close=df['Close'], window=26).ema_indicator()
             df['RSI_14'] = RSIIndicator(close=df['Close'], window=14).rsi()
-
             fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 5), gridspec_kw={'height_ratios': [3, 1]}, dpi=120)
-
             ax1.plot(df.index, df['Close'], label='Close Price', color='#1f77b4', linewidth=1.8)
             ax1.plot(df.index, df['EMA_9'], label='EMA 9', color='#2ca02c', linestyle='--', linewidth=1.2)
             ax1.plot(df.index, df['EMA_26'], label='EMA 26', color='#d62728', linestyle='--', linewidth=1.2)
@@ -879,7 +835,6 @@ def generate_chart_image(symbol, display_name):
             ax1.set_ylabel("Price (₹)")
             ax1.grid(True, linestyle=':', alpha=0.6)
             ax1.legend(loc='upper left', fontsize=8)
-
             ax2.plot(df.index, df['RSI_14'], label='RSI (14)', color='#9467bd', linewidth=1.4)
             ax2.axhline(70, color='red', linestyle=':', alpha=0.7)
             ax2.axhline(30, color='green', linestyle=':', alpha=0.7)
@@ -888,7 +843,6 @@ def generate_chart_image(symbol, display_name):
             ax2.set_ylim(0, 100)
             ax2.grid(True, linestyle=':', alpha=0.6)
             ax2.legend(loc='upper left', fontsize=7)
-
             buf = io.BytesIO()
             plt.tight_layout()
             plt.savefig(buf, format='png')
@@ -926,7 +880,6 @@ def get_accurate_price(symbol: str) -> float:
     cached_price = price_cache.get(symbol)
     if cached_price:
         return cached_price
-    
     with SuppressStdout():
         try:
             t = yf.Ticker(symbol)
@@ -975,17 +928,14 @@ def analyze_sentiment(title):
 def extract_single_stock_only(title):
     upper_title = title.upper()
     found_matches = set()
-    
     for key, symbol in STOCKS_MAP.items():
         pattern = r"(?<![A-Z0-9])" + re.escape(key) + r"(?![A-Z0-9])"
         if re.search(pattern, upper_title):
             found_matches.add((key, symbol))
-
     unique_symbols = set(item[1] for item in found_matches)
     if len(unique_symbols) == 1:
         single_item = list(found_matches)[0]
         return single_item[0], single_item[1]
-    
     return None, None
 
 def fetch_clickable_global_news_list():
@@ -999,18 +949,13 @@ def fetch_clickable_global_news_list():
                 if not items:
                     soup = BeautifulSoup(resp.content, "html.parser")
                     items = soup.find_all("item")
-
                 for item in items[:6]:
                     title = item.title.text.strip() if item.title else ""
                     link = item.link.text.strip() if item.link else ""
                     if title and link:
                         sent, _ = analyze_sentiment(title)
                         if "NEUTRAL" not in sent:
-                            news_items.append({
-                                "title": title,
-                                "link": link,
-                                "sentiment": sent
-                            })
+                            news_items.append({"title": title, "link": link, "sentiment": sent})
         except Exception:
             pass
     return news_items[:5]
@@ -1020,17 +965,14 @@ def update_and_check_trade_outcomes():
     global ACTIVE_MONITORED_TRADES, TRADE_STATS
     if not is_market_hours() or not ACTIVE_MONITORED_TRADES:
         return
-
     updated_list = []
     for trade in ACTIVE_MONITORED_TRADES:
         curr_price = get_accurate_price(trade["symbol"])
         if curr_price == 0.0:
             updated_list.append(trade)
             continue
-
         target_hit = False
         sl_hit = False
-
         if trade["direction"] == "BULLISH":
             if curr_price >= trade["target"]:
                 target_hit = True
@@ -1041,7 +983,6 @@ def update_and_check_trade_outcomes():
                 target_hit = True
             elif curr_price >= trade["sl"]:
                 sl_hit = True
-
         if target_hit:
             TRADE_STATS["target_hit"] += 1
             monitor.record_trade_result('WIN')
@@ -1052,7 +993,6 @@ def update_and_check_trade_outcomes():
             confidence_scorer.update_history(trade["symbol"], 'LOSS')
         else:
             updated_list.append(trade)
-
     ACTIVE_MONITORED_TRADES = updated_list
 
 def get_win_rate_summary_text():
@@ -1061,7 +1001,6 @@ def get_win_rate_summary_text():
     sls = TRADE_STATS["sl_hit"]
     closed = hits + sls
     win_rate = (hits / closed * 100) if closed > 0 else 0.0
-    
     return (
         f"📊 <b>TODAY'S ACCURACY & WIN-RATE STATS:</b>\n"
         f"• Total Signals: <b>{total}</b>\n"
@@ -1072,54 +1011,42 @@ def get_win_rate_summary_text():
 # ==================== SIGNAL FUNCTION ====================
 def check_3min_plus_signal(symbol: str, display_name: str, is_index: bool = False) -> Optional[SignalData]:
     global last_signal_state, last_alert_candle_time
-    
     with SuppressStdout():
         try:
             current_close = get_accurate_price(symbol)
             if current_close == 0.0:
                 return None
-                
             if not is_index and current_close < 200:
                 return None
-            
             ticker = yf.Ticker(symbol)
             df = ticker.history(period="1d", interval="3m")
             if df.empty or len(df) < 5:
                 return None
-            
             df["Close"] = df["Close"].values.flatten().astype(float)
             df["High"] = df["High"].values.flatten().astype(float)
             df["Low"] = df["Low"].values.flatten().astype(float)
             df["Volume"] = df["Volume"].values.flatten().astype(float)
-            
             df["EMA_9"] = EMAIndicator(close=df["Close"], window=9).ema_indicator()
             df["EMA_26"] = EMAIndicator(close=df["Close"], window=26).ema_indicator()
             df["ATR_14"] = AverageTrueRange(high=df["High"], low=df["Low"], close=df["Close"], window=14).average_true_range()
             df["RSI_14"] = RSIIndicator(close=df["Close"], window=14).rsi()
             df["Vol_SMA"] = df["Volume"].rolling(window=20).mean()
-            
             tp = (df["High"] + df["Low"] + df["Close"]) / 3
             df["VWAP"] = (tp * df["Volume"]).cumsum() / df["Volume"].cumsum()
             current_vwap = round(float(df["VWAP"].iloc[-1]), 2) if not df["VWAP"].empty else float(df["Close"].iloc[-1])
-            
             latest_close = float(df["Close"].iloc[-1])
             vwap_info = f"Above VWAP (₹{current_vwap}) 🟢" if latest_close >= current_vwap else f"Below VWAP (₹{current_vwap}) 🔴"
-            
             atr_temp = float(df["ATR_14"].iloc[-1]) if not pd.isna(df["ATR_14"].iloc[-1]) else 1.0
             st_val = round(latest_close - (atr_temp * 2), 2) if latest_close >= current_vwap else round(latest_close + (atr_temp * 2), 2)
             supertrend_info = f"Bullish (₹{st_val}) 🟢" if latest_close >= current_vwap else f"Bearish (₹{st_val}) 🔴"
-            
             row_prev = df.iloc[-2] if len(df) >= 2 else df.iloc[-1]
             row_now = df.iloc[-1]
             candle_timestamp = str(df.index[-1])
-            
             atr_val = float(row_now["ATR_14"]) if not pd.isna(row_now["ATR_14"]) else current_close * 0.005
             rsi_val = float(row_now["RSI_14"]) if not pd.isna(row_now["RSI_14"]) else 50.0
             current_vol = float(row_now["Volume"])
             vol_sma = float(row_now["Vol_SMA"]) if not pd.isna(row_now["Vol_SMA"]) else 0.0
-            
             vol_ratio = (current_vol / vol_sma) if vol_sma > 0 else 1.0
-            
             warning_note = ""
             if vol_ratio < 1.0 and not is_index:
                 warning_note = "⚠️ Volume is low (<1.0x SMA)"
@@ -1127,138 +1054,94 @@ def check_3min_plus_signal(symbol: str, display_name: str, is_index: bool = Fals
                 warning_note = "🔥 High Volume Confirmation (>2.0x SMA)"
             else:
                 warning_note = "✅ Volume Normal"
-            
             now_ema9 = float(row_now["EMA_9"])
             now_ema26 = float(row_now["EMA_26"])
             prev_ema9 = float(row_prev["EMA_9"])
             prev_ema26 = float(row_prev["EMA_26"])
-            
             fresh_bullish = (prev_ema9 <= prev_ema26) and (now_ema9 > now_ema26)
             fresh_bearish = (prev_ema9 >= prev_ema26) and (now_ema9 < now_ema26)
-            
             if fresh_bullish:
                 current_direction = "BULLISH"
             elif fresh_bearish:
                 current_direction = "BEARISH"
             else:
                 current_direction = "NONE"
-            
             with signal_lock:
                 if current_direction != "NONE":
                     if last_alert_candle_time.get(symbol) == candle_timestamp:
                         return None
-                    
                     last_signal_state[symbol] = current_direction
                     last_alert_candle_time[symbol] = candle_timestamp
-                    
                     action = "BUY / CALL (CE)" if current_direction == "BULLISH" else "BUY / PUT (PE)"
                     opt_type = "CE" if current_direction == "BULLISH" else "PE"
-                    
                     if current_direction == "BULLISH":
                         stop_loss = current_close - (atr_val * 1.5)
                         target = current_close + ((current_close - stop_loss) * 1.5)
                     else:
                         stop_loss = current_close + (atr_val * 1.5)
                         target = current_close - ((stop_loss - current_close) * 1.5)
-                    
                     risk_per_share = abs(current_close - stop_loss)
                     recommended_qty = int(config.MAX_RISK_PER_TRADE / risk_per_share) if risk_per_share > 0 else 1
-                    
                     suggested_strike = calculate_strike_price(display_name, current_close, opt_type) if is_index else "N/A"
-                    
                     signal_data = SignalData(
-                        name=display_name,
-                        symbol=symbol,
-                        direction=current_direction,
+                        name=display_name, symbol=symbol, direction=current_direction,
                         sentiment=f"{'🟢' if current_direction == 'BULLISH' else '🔴'} {current_direction} PLUS (+) SIGN",
-                        action=action,
-                        price=current_close,
-                        sl=stop_loss,
-                        target=target,
-                        rsi=rsi_val,
-                        strike=suggested_strike,
-                        warning_note=warning_note,
-                        vol_ratio=f"{vol_ratio:.1f}x",
-                        time=datetime.now(IST).strftime(config.TIME_FORMAT),
-                        vwap_info=vwap_info,
-                        supertrend_info=supertrend_info,
-                        risk_per_share=risk_per_share,
-                        recommended_qty=recommended_qty,
-                        confidence=0,
-                        momentum_score=0
+                        action=action, price=current_close, sl=stop_loss, target=target,
+                        rsi=rsi_val, strike=suggested_strike, warning_note=warning_note,
+                        vol_ratio=f"{vol_ratio:.1f}x", time=datetime.now(IST).strftime(config.TIME_FORMAT),
+                        vwap_info=vwap_info, supertrend_info=supertrend_info,
+                        risk_per_share=risk_per_share, recommended_qty=recommended_qty,
+                        confidence=0, momentum_score=0
                     )
-                    
                     confidence = confidence_scorer.calculate_confidence(signal_data)
                     momentum = confidence_scorer.calculate_momentum(symbol)
-                    
                     signal_data.confidence = confidence
                     signal_data.momentum_score = momentum
-                    
                     sig_dict = asdict(signal_data)
-                    
                     day_plus_signals_log.append(sig_dict)
                     TRADE_STATS["total_signals"] += 1
-                    
                     priority = 'high' if symbol in config.HIGH_PRIORITY_STOCKS else 'medium' if symbol in config.MEDIUM_PRIORITY_STOCKS else 'low'
-                    
                     ACTIVE_MONITORED_TRADES.append({
-                        "symbol": symbol,
-                        "direction": current_direction,
-                        "target": target,
-                        "sl": stop_loss,
-                        "entry_time": datetime.now(IST),
-                        "entry_price": current_close,
+                        "symbol": symbol, "direction": current_direction,
+                        "target": target, "sl": stop_loss,
+                        "entry_time": datetime.now(IST), "entry_price": current_close,
                         "priority": priority
                     })
-                    
                     monitor.record_signal(priority)
                     return signal_data
-                    
         except Exception as e:
             logger.error(f"Signal check error for {symbol}: {e}")
             monitor.record_api_error()
-    
     return None
 
-# ==================== NEWS FUNCTIONS ====================
+# ==================== 🚀 IMPROVED NEWS FUNCTIONS WITH DEBUG ====================
 def process_rss_items(soup, max_items: int = 20, age_limit: int = 3600) -> List[Dict]:
     items = soup.find_all("item")
     if not items:
         soup = BeautifulSoup(str(soup), "html.parser")
         items = soup.find_all("item")
-    
     processed_items = []
     now_ist = datetime.now(IST)
-    
     for item in items[:max_items]:
         try:
             title = item.title.text.strip() if item.title else ""
             link = item.link.text.strip() if item.link else ""
             pub_date_raw = item.pubDate.text.strip() if item.pubDate else ""
-            
             if not title:
                 continue
-                
             pub_time = parse_exact_pub_date(pub_date_raw)
-            
             if (now_ist - pub_time).total_seconds() > age_limit:
                 continue
-            
             quality = news_filter.get_quality_score(link, title)
             if quality < 6:
                 continue
-                
             processed_items.append({
-                'title': title,
-                'link': link,
-                'pub_time': pub_time,
-                'pub_time_str': pub_time.strftime(config.TIME_FORMAT),
-                'quality': quality
+                'title': title, 'link': link, 'pub_time': pub_time,
+                'pub_time_str': pub_time.strftime(config.TIME_FORMAT), 'quality': quality
             })
         except Exception as e:
             logger.debug(f"Error processing RSS item: {e}")
             continue
-            
     return processed_items
 
 def check_macro_and_global_news():
@@ -1271,19 +1154,16 @@ def check_macro_and_global_news():
         try:
             resp = requests.get(rss_url, headers=config.HTTP_HEADERS, timeout=6)
             if resp.status_code != 200:
+                logger.debug(f"Feed error {rss_url}: {resp.status_code}")
                 continue
-                
             soup = BeautifulSoup(resp.content, "xml")
             items = process_rss_items(soup, max_items=15, age_limit=config.MACRO_NEWS_AGE_LIMIT)
-            
             for item in items:
                 title = item['title']
                 link = item['link']
-                
                 norm_title = normalize_text(title)
                 if norm_title in seen_macro_news_titles:
                     continue
-                
                 title_lower = title.lower()
                 matched_kw = None
                 for kw in MACRO_KEYWORDS:
@@ -1291,25 +1171,19 @@ def check_macro_and_global_news():
                     if re.search(pattern, title_lower):
                         matched_kw = kw
                         break
-                
                 if matched_kw:
                     seen_macro_news_titles.add(norm_title)
                     sentiment, _ = analyze_sentiment(title)
-                    
                     if "NEUTRAL" in sentiment:
                         continue
-                    
                     batch_news_items.append({
-                        "keyword": matched_kw.upper(),
-                        "sentiment": sentiment,
-                        "title": title,
-                        "link": link,
-                        "quality": item.get('quality', 5)
+                        "keyword": matched_kw.upper(), "sentiment": sentiment,
+                        "title": title, "link": link, "quality": item.get('quality', 5)
                     })
                     monitor.record_macro_news()
-                    
+                    logger.info(f"🔍 Macro News Found: {matched_kw} - {title[:50]}...")
         except Exception as e:
-            logger.error(f"Error in macro news check: {e}")
+            logger.error(f"Error in macro news check {rss_url}: {e}")
             monitor.record_api_error()
     
     if batch_news_items:
@@ -1335,7 +1209,6 @@ def send_macro_news_batch_alert(batch_news_items: List[Dict], now_ist: datetime)
 
 def send_instant_plus_signal_alert(sig_dict):
     now_str = datetime.now(IST).strftime(config.DATETIME_FORMAT)
-    
     matched_news = [n for n in day_news_log if n['stock'] == sig_dict['name']]
     if matched_news:
         latest_n = matched_news[-1]
@@ -1344,22 +1217,17 @@ def send_instant_plus_signal_alert(sig_dict):
         news_section = f"• 📰 <b>Stock News:</b> {news_html}\n• 📊 <b>News Sentiment:</b> {news_sent}\n"
     else:
         news_section = "• 📰 <b>Stock News:</b> <i>No Recent Specific News (Pure Technical EMA Crossover)</i>\n"
-
     win_rate_summary = get_win_rate_summary_text()
-    
     confidence = sig_dict.get('confidence', 0)
     momentum = sig_dict.get('momentum_score', 0)
-    
     if confidence >= 70:
         confidence_emoji = "🚀 HIGH"
     elif confidence >= 50:
         confidence_emoji = "📈 MEDIUM"
     else:
         confidence_emoji = "⚠️ LOW"
-    
     momentum_emoji = "🟢" if momentum > 0 else "🔴" if momentum < 0 else "⚪"
     momentum_text = f"{momentum_emoji} {abs(momentum)}%" if momentum != 0 else "NEUTRAL"
-
     msg = (
         f"⚡ <b>[LIVE (+) SIGNAL]</b> ⚡\n"
         f"📅 <i>{now_str}</i>\n"
@@ -1380,10 +1248,8 @@ def send_instant_plus_signal_alert(sig_dict):
         f"• Risk/Share: ₹{sig_dict['risk_per_share']:.2f}\n"
         f"• Recommended Qty: <b>{sig_dict['recommended_qty']} Shares</b>\n\n"
     )
-    
     if sig_dict['strike'] != "N/A":
         msg += f"• 🎯 <b>Suggested Option:</b> <code>{sig_dict['strike']}</code>\n"
-
     msg += (
         f"• 🛑 <b>SL:</b> ₹{sig_dict['sl']:,.2f} | 🎯 <b>Target:</b> ₹{sig_dict['target']:,.2f}\n"
         f"═════════════════════════\n"
@@ -1391,7 +1257,6 @@ def send_instant_plus_signal_alert(sig_dict):
         f"═════════════════════════\n"
         f"🤖 <i>Shambhu's Live Precision Radar Engine</i>"
     )
-
     clean_sym = sig_dict['symbol'].replace('.NS', '')
     reply_markup = {
         "inline_keyboard": [
@@ -1399,9 +1264,7 @@ def send_instant_plus_signal_alert(sig_dict):
             [{"text": "🔍 NSE Stock Details", "url": f"https://www.nseindia.com/get-quotes/equity?symbol={clean_sym}"}]
         ]
     }
-
     send_telegram_alert(msg, reply_markup=reply_markup)
-
     chart_img = generate_chart_image(sig_dict['symbol'], sig_dict['name'])
     if chart_img:
         caption = f"📊 <b>{sig_dict['name']}</b> ({sig_dict['sentiment']})\n⚡ <b>Action:</b> {sig_dict['action']} | 💰 <b>Price:</b> ₹{sig_dict['price']:,.2f}\n🛑 <b>SL:</b> ₹{sig_dict['sl']:,.2f} | 🎯 <b>Target:</b> ₹{sig_dict['target']:,.2f}\n📊 Confidence: {sig_dict.get('confidence', 0)}%"
@@ -1409,77 +1272,54 @@ def send_instant_plus_signal_alert(sig_dict):
 
 def fetch_and_collect_stock_news():
     global seen_news_titles, news_watched_stocks, day_news_log, stock_sentiment_counts, stock_latest_news_time, last_news_alert_time
-
     now_ist = datetime.now(IST)
     cycle_seen_symbols = set()
-
     for rss_url in INDIAN_NEWS_FEEDS:
         try:
             resp = requests.get(rss_url, headers=config.HTTP_HEADERS, timeout=8)
             if resp.status_code != 200:
                 continue
-                
             soup = BeautifulSoup(resp.content, "xml")
             items = process_rss_items(soup, max_items=20, age_limit=config.STOCK_NEWS_AGE_LIMIT)
-
             for item in items:
                 title = item['title']
                 link = item['link']
                 pub_time = item['pub_time']
                 pub_time_formatted = item['pub_time_str']
-
                 if title:
                     norm_title = normalize_text(title)
                     if norm_title in seen_news_titles:
                         continue
-
                     display_name, yf_symbol = extract_single_stock_only(title)
-                    
                     if display_name and yf_symbol:
                         seen_news_titles.add(norm_title)
-
                         if yf_symbol in cycle_seen_symbols:
                             continue
-
                         last_alert_time = last_news_alert_time.get(yf_symbol)
                         if last_alert_time and (now_ist - last_alert_time).total_seconds() < config.NEWS_COOLDOWN_SECONDS:
                             continue
-
                         sentiment, score = analyze_sentiment(title)
-
                         if "NEUTRAL" not in sentiment:
                             stock_latest_news_time[yf_symbol] = pub_time
                             price = get_accurate_price(yf_symbol)
                             if price < 200:
                                 continue
-
                             news_watched_stocks.add((display_name, yf_symbol))
                             cycle_seen_symbols.add(yf_symbol)
-                            
                             if yf_symbol not in stock_sentiment_counts:
                                 stock_sentiment_counts[yf_symbol] = {"pos": 0, "neg": 0}
-
                             if "POSITIVE" in sentiment:
                                 stock_sentiment_counts[yf_symbol]["pos"] += 1
                             else:
                                 stock_sentiment_counts[yf_symbol]["neg"] += 1
-
                             pos_count = stock_sentiment_counts[yf_symbol]["pos"]
                             neg_count = stock_sentiment_counts[yf_symbol]["neg"]
                             marks_str = f"🟢 {pos_count} Pos | 🔴 {neg_count} Neg"
-
                             news_obj = {
-                                "stock": display_name,
-                                "symbol": yf_symbol,
-                                "price": price,
-                                "title": title,
-                                "sentiment": sentiment,
-                                "time": pub_time_formatted,
-                                "link": link,
-                                "marks": marks_str,
-                                "quality": item.get('quality', 5)
+                                "stock": display_name, "symbol": yf_symbol, "price": price,
+                                "title": title, "sentiment": sentiment, "time": pub_time_formatted,
+                                "link": link, "marks": marks_str, "quality": item.get('quality', 5)
                             }
-
                             day_news_log.append(news_obj)
                             monitor.record_news()
         except Exception as e:
@@ -1491,18 +1331,15 @@ def send_845_am_premarket_report():
     now_ist = datetime.now(IST)
     macros = fetch_macro_indicators()
     news_items = fetch_clickable_global_news_list()
-
     msg = f"🌅 <b>08:45 AM PRE-MARKET GLOBAL SENTIMENT REPORT</b> 🌅\n"
     msg += f"📅 <i>{now_ist.strftime(config.DATE_FORMAT)}</i>\n"
     msg += "═════════════════════════\n\n"
-
     msg += "📊 <b>GLOBAL & MACRO CUES:</b>\n"
     for name, val in macros.items():
         price_str = f"{val['price']:,.2f}"
         chg_str = f"{val['change_pct']:+.2f}%"
         icon = "🟢" if val['change_pct'] >= 0 else "🔴"
         msg += f"• <b>{name}:</b> {price_str} ({icon} {chg_str})\n"
-
     msg += "\n-----------------------------------------\n\n"
     msg += "🌐 <b>GLOBAL BREAKING NEWS & LINKS:</b>\n"
     if news_items:
@@ -1510,48 +1347,38 @@ def send_845_am_premarket_report():
             msg += f"• {item['sentiment']}: <a href=\"{item['link']}\">{item['title'][:100]}...</a>\n\n"
     else:
         msg += "• ℹ️ Global news cues stable.\n"
-
     msg += "═════════════════════════\n"
     msg += "🤖 <i>Shambhu's Live Precision Radar Engine</i>"
-
     send_telegram_alert(msg)
 
 def send_910_am_table_report():
     now_ist = datetime.now(IST)
     news_24h = []
-
     nifty_p = get_accurate_price("^NSEI")
     bank_p = get_accurate_price("^NSEBANK")
     sensex_p = get_accurate_price("^BSESN")
     vix_p = get_accurate_price("^INDIAVIX")
-
     msg = f"📊 <b>09:10 AM INDIAN MARKET SENTIMENT & 24H NEWS</b> 📊\n"
     msg += f"📅 <i>{now_ist.strftime(config.DATE_FORMAT)}</i>\n"
     msg += "═════════════════════════\n\n"
-
     msg += "🇮🇳 <b>INDIAN MARKET SNAPSHOT:</b>\n"
     msg += f"• <b>NIFTY 50:</b> ₹{nifty_p:,.2f}\n"
     msg += f"• <b>BANK NIFTY:</b> ₹{bank_p:,.2f}\n"
     msg += f"• <b>SENSEX:</b> ₹{sensex_p:,.2f}\n"
     msg += f"• <b>INDIA VIX:</b> {vix_p:.2f}\n"
     msg += "\n-----------------------------------------\n\n"
-
     for rss_url in INDIAN_NEWS_FEEDS:
         try:
             resp = requests.get(rss_url, headers=config.HTTP_HEADERS, timeout=8)
             if resp.status_code != 200:
                 continue
-                
             soup = BeautifulSoup(resp.content, "xml")
             items = process_rss_items(soup, max_items=30, age_limit=86400)
-
             for item in items:
                 title = item['title']
                 link = item['link']
                 pub_time = item['pub_time']
-                
                 is_within_24h = (now_ist - pub_time) <= timedelta(hours=24)
-
                 if is_within_24h and title:
                     display_name, yf_symbol = extract_single_stock_only(title)
                     if display_name and yf_symbol:
@@ -1559,21 +1386,13 @@ def send_910_am_table_report():
                         if st_price >= 200:
                             sent, _ = analyze_sentiment(title)
                             if "NEUTRAL" not in sent:
-                                news_24h.append({
-                                    "stock": display_name, 
-                                    "sentiment": sent, 
-                                    "title": title, 
-                                    "link": link,
-                                    "quality": item.get('quality', 5)
-                                })
+                                news_24h.append({"stock": display_name, "sentiment": sent, "title": title, "link": link, "quality": item.get('quality', 5)})
         except Exception as e:
             logger.error(f"Error in 9:10 AM report: {e}")
-
     unique_table = {}
     for item in news_24h:
         if item["stock"] not in unique_table or unique_table[item["stock"]].get('quality', 0) < item.get('quality', 0):
             unique_table[item["stock"]] = item
-
     msg += "📰 <b>PAST 24-HOURS SPECIFIC STOCK NEWS LINKS (>₹200):</b>\n"
     if unique_table:
         for st, item in sorted(unique_table.items(), key=lambda x: x[1].get('quality', 0), reverse=True)[:10]:
@@ -1583,32 +1402,25 @@ def send_910_am_table_report():
                 msg += f"• <b>#{st}:</b> {item['title'][:80]}... ({item['sentiment']})\n\n"
     else:
         msg += "ℹ️ <i>No specific stock news detected in the last 24 hours.</i>\n"
-
     msg += "═════════════════════════\n"
     msg += "🤖 <i>Shambhu's Live Precision Radar Engine</i>"
-
     send_telegram_alert(msg)
 
 def send_330_pm_closing_summary():
     now_ist = datetime.now(IST)
     win_rate_summary = get_win_rate_summary_text()
     performance_report = monitor.get_status_report()
-
     msg = f"📊 <b>03:30 PM INTRADAY SUMMARY (9:15 AM to 3:30 PM)</b> 📊\n"
     msg += f"📅 <i>{now_ist.strftime(config.DATE_FORMAT)}</i>\n"
     msg += "═════════════════════════\n\n"
-
     msg += "📈 <b>INDICES CLOSING PRICES:</b>\n"
     for idx_sym, idx_name in INDICES_MAP.items():
         msg += f"• <b>{idx_name}:</b> ₹{get_accurate_price(idx_sym):,.2f}\n"
     msg += "\n-----------------------------------------\n\n"
-
     msg += f"{win_rate_summary}\n"
     msg += "-----------------------------------------\n\n"
-    
     msg += f"{performance_report}\n"
     msg += "-----------------------------------------\n\n"
-
     msg += f"🔥 <b>TODAY'S EMA CROSSOVER (+) SIGNALS ({len(day_plus_signals_log)}):</b>\n"
     if day_plus_signals_log:
         for sig in day_plus_signals_log[-10:]:
@@ -1617,12 +1429,9 @@ def send_330_pm_closing_summary():
             msg += f"  Price: ₹{sig['price']:,.2f} | Confidence: {confidence}%\n"
     else:
         msg += "• ℹ️ No (+) signals formed during market hours today.\n"
-
     msg += "\n═════════════════════════\n"
     msg += "🤖 <i>Market Closed. See you tomorrow!</i>"
-
     send_telegram_alert(msg)
-
     day_news_log.clear()
     day_plus_signals_log.clear()
     stock_sentiment_counts.clear()
@@ -1639,52 +1448,37 @@ def send_330_pm_closing_summary():
 # ==================== MAIN SCAN FUNCTION ====================
 def scan_and_alert():
     global last_sent_845_date, last_sent_910_date, last_sent_330_date
-    
     scan_start = time.time()
-    
     try:
         now_ist = datetime.now(IST)
         current_time = now_ist.strftime("%H:%M")
         today_date = now_ist.strftime("%Y-%m-%d")
-        
         if current_time == "08:45" and last_sent_845_date != today_date:
             send_845_am_premarket_report()
             last_sent_845_date = today_date
             logger.info("Sent 8:45 AM pre-market report")
-        
         if current_time == "09:10" and last_sent_910_date != today_date:
             send_910_am_table_report()
             last_sent_910_date = today_date
             logger.info("Sent 9:10 AM market snapshot")
-        
         if current_time == "15:30" and last_sent_330_date != today_date:
             send_330_pm_closing_summary()
             last_sent_330_date = today_date
             logger.info("Sent 3:30 PM closing summary")
-        
         check_macro_and_global_news()
         fetch_and_collect_stock_news()
         update_and_check_trade_outcomes()
-        
         if is_market_hours():
             scan_dict = {}
-            
             for index_sym, index_name in INDICES_MAP.items():
                 scan_dict[index_sym] = (index_sym, index_name, True)
-            
             for s_name, s_sym in CORE_STOCKS_MAP.items():
                 scan_dict[s_sym] = (s_sym, s_name, False)
-            
             for s_name, s_sym in list(news_watched_stocks):
                 if s_sym not in scan_dict:
                     scan_dict[s_sym] = (s_sym, s_name, False)
-            
             scan_items = list(scan_dict.values())
-            
-            high_priority = []
-            medium_priority = []
-            low_priority = []
-            
+            high_priority, medium_priority, low_priority = [], [], []
             for item in scan_items:
                 sym = item[0]
                 if sym in config.HIGH_PRIORITY_STOCKS:
@@ -1693,41 +1487,30 @@ def scan_and_alert():
                     medium_priority.append(item)
                 else:
                     low_priority.append(item)
-            
             executor = pool_manager.get_executor()
-            
             futures = []
             for item in high_priority:
-                future = executor.submit(_scan_single_item, item)
-                futures.append(future)
-            
+                futures.append(executor.submit(_scan_single_item, item))
             for i in range(0, len(medium_priority), 5):
                 batch = medium_priority[i:i+5]
                 for item in batch:
-                    future = executor.submit(_scan_single_item, item)
-                    futures.append(future)
+                    futures.append(executor.submit(_scan_single_item, item))
                 time.sleep(0.5)
-            
             for i in range(0, len(low_priority), 10):
                 batch = low_priority[i:i+10]
                 for item in batch:
-                    future = executor.submit(_scan_single_item, item)
-                    futures.append(future)
+                    futures.append(executor.submit(_scan_single_item, item))
                 time.sleep(1)
-            
             for future in futures:
                 try:
                     future.result(timeout=3)
                 except Exception as e:
                     logger.debug(f"Scan item error: {e}")
-                    
     except Exception as e:
         logger.error(f"Scan error: {e}")
         monitor.record_api_error()
-    
     scan_duration = time.time() - scan_start
     monitor.record_scan(scan_duration)
-    
     if monitor.metrics['scans'] % 10 == 0:
         logger.info(f"Performance: {monitor.get_status_report()}")
 
@@ -1741,11 +1524,9 @@ def _scan_single_item(item):
     except Exception as e:
         logger.error(f"Error scanning {name}: {e}")
 
-# ==================== GRACEFUL SHUTDOWN - FIXED ====================
+# ==================== GRACEFUL SHUTDOWN ====================
 def signal_handler(sig, frame):
-    """Handle shutdown signals gracefully - NO ALERT on cloud"""
     logger.info("🛑 Received shutdown signal. Cleaning up...")
-    
     if not is_cloud_platform():
         try:
             send_telegram_alert("🛑 Radar Engine shutting down gracefully")
@@ -1753,12 +1534,10 @@ def signal_handler(sig, frame):
             pass
     else:
         logger.info("Cloud platform detected - silent shutdown (no alert)")
-    
     pool_manager.shutdown()
     logger.info("Cleanup complete. Exiting...")
     sys.exit(0)
 
-# Register signal handlers
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
@@ -1777,15 +1556,12 @@ def run_health_check():
                 logger.warning("No internet connection detected")
                 if not is_cloud_platform():
                     send_telegram_alert("⚠️ No internet connection detected!")
-            
             if monitor.metrics['scans'] % 100 == 0 and monitor.metrics['scans'] > 0:
                 status_msg = monitor.get_status_report()
                 if not is_cloud_platform():
                     send_telegram_alert(status_msg)
-                
         except Exception as e:
             logger.error(f"Health check error: {e}")
-        
         time.sleep(3600)
 
 # ==================== FLASK SERVER ====================
@@ -1815,10 +1591,8 @@ def signals():
     signals_list = []
     for sig in day_plus_signals_log[-20:]:
         signals_list.append({
-            'name': sig['name'],
-            'direction': sig['direction'],
-            'price': sig['price'],
-            'confidence': sig.get('confidence', 0),
+            'name': sig['name'], 'direction': sig['direction'],
+            'price': sig['price'], 'confidence': sig.get('confidence', 0),
             'time': sig['time']
         })
     return json.dumps(signals_list)
@@ -1830,7 +1604,6 @@ def run_server():
 # ==================== MAIN EXECUTION ====================
 if __name__ == "__main__":
     logger.info("🚀 Starting Shambhu's Radar Engine...")
-    
     if is_cloud_platform():
         logger.info("☁️ Running on Cloud Platform (Render/Railway)")
     else:
@@ -1853,7 +1626,7 @@ if __name__ == "__main__":
                 "🎯 Priority-Based Scanning Active\n"
                 "📰 Smart News Filtering Active\n"
                 "❌ NEUTRAL News Alerts Disabled\n"
-                "🔥 STRONG SENTIMENT KEYWORDS ADDED"
+                "🔥 300+ STRONG SENTIMENT KEYWORDS ADDED"
             )
             send_telegram_alert(startup_msg)
             logger.info("Startup alert sent to Telegram")
