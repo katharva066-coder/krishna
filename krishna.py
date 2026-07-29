@@ -49,6 +49,11 @@ TELEGRAM_CHAT_ID = "1106122116"
 CHECK_INTERVAL = 15  # दर १५ सेकंदांनी स्कॅनिंग
 MAX_RISK_PER_TRADE = 1000  # एका ट्रेडमधील कमाल रिस्क (₹)
 
+# 🌐 Moneycontrol ब्लॉक टाळण्यासाठी रिअल ब्राऊजर हेडर
+HTTP_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+}
+
 IST = timezone(timedelta(hours=5, minutes=30))
 
 INDICES_MAP = {
@@ -333,12 +338,11 @@ def extract_single_stock_only(title):
     return None, None
 
 def fetch_clickable_global_news_list():
-    headers = {"User-Agent": "Mozilla/5.0"}
     news_items = []
 
     for url in GLOBAL_NEWS_FEEDS:
         try:
-            resp = requests.get(url, headers=headers, timeout=6)
+            resp = requests.get(url, headers=HTTP_HEADERS, timeout=6)
             if resp.status_code == 200:
                 soup = BeautifulSoup(resp.content, "xml")
                 items = soup.find_all("item")
@@ -412,7 +416,7 @@ def get_win_rate_summary_text():
         f"• Win Rate Accuracy: <b>{win_rate:.1f}%</b> 🎯\n"
     )
 
-# 🎯 ORIGINAL CORE SIGNAL LOGIC (NO FILTER CHANGE + ADDED INFO DETAILS)
+# 🎯 ORIGINAL CORE SIGNAL LOGIC (WITH ₹200 PRICE FILTER)
 def check_3min_plus_signal(symbol, display_name, is_index=False):
     global last_signal_state, last_alert_candle_time
 
@@ -427,6 +431,14 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
             df["High"] = df["High"].values.flatten().astype(float)
             df["Low"] = df["Low"].values.flatten().astype(float)
             df["Volume"] = df["Volume"].values.flatten().astype(float)
+
+            current_close = get_accurate_price(symbol)
+            if current_close == 0.0:
+                current_close = float(df["Close"].iloc[-1])
+
+            # 🛑 FILTER: ₹२०० पेक्षा कमी किमतीच्या स्टॉक्ससाठी कोणतेही अलर्ट नको (इंडायसेस सोडता)
+            if not is_index and current_close < 200:
+                return None
 
             # --- ORIGINAL INDICATORS ---
             df["EMA_9"] = EMAIndicator(close=df["Close"], window=9).ema_indicator()
@@ -450,10 +462,6 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
             row_prev = df.iloc[-2] if len(df) >= 2 else df.iloc[-1]
             row_now = df.iloc[-1]
             candle_timestamp = str(df.index[-1])
-
-            current_close = get_accurate_price(symbol)
-            if current_close == 0.0:
-                current_close = float(row_now["Close"])
 
             atr_val = float(row_now["ATR_14"]) if not pd.isna(row_now["ATR_14"]) else current_close * 0.005
             rsi_val = float(row_now["RSI_14"]) if not pd.isna(row_now["RSI_14"]) else 50.0
@@ -553,11 +561,10 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
 
 def fetch_and_collect_stock_news():
     global seen_news_titles, news_watched_stocks, day_news_log, stock_news_tracker
-    headers = {"User-Agent": "Mozilla/5.0"}
 
     for rss_url in INDIAN_NEWS_FEEDS:
         try:
-            resp = requests.get(rss_url, headers=headers, timeout=8)
+            resp = requests.get(rss_url, headers=HTTP_HEADERS, timeout=8)
             if resp.status_code == 200:
                 soup = BeautifulSoup(resp.content, "xml")
                 items = soup.find_all("item")
@@ -588,9 +595,14 @@ def fetch_and_collect_stock_news():
                                     if "NEUTRAL" not in sentiment:
                                         seen_news_titles.add(norm_title)
                                         seen_news_titles.add(stock_news_key)
-                                        news_watched_stocks.add((display_name, yf_symbol))
 
                                         price = get_accurate_price(yf_symbol)
+                                        
+                                        # 🛑 FILTER: ₹२०० पेक्षा कमी किमतीच्या स्टॉक्ससाठी न्यूज अलर्ट्स पाठवू नका
+                                        if price < 200:
+                                            continue
+
+                                        news_watched_stocks.add((display_name, yf_symbol))
                                         
                                         if yf_symbol not in stock_news_tracker:
                                             stock_news_tracker[yf_symbol] = {"pos": 0, "neg": 0}
@@ -751,7 +763,6 @@ def send_845_am_premarket_report():
 
 def send_910_am_table_report():
     now_ist = datetime.now(IST)
-    headers = {"User-Agent": "Mozilla/5.0"}
     news_24h = []
 
     nifty_p = get_accurate_price("^NSEI")
@@ -779,7 +790,7 @@ def send_910_am_table_report():
 
     for rss_url in INDIAN_NEWS_FEEDS:
         try:
-            resp = requests.get(rss_url, headers=headers, timeout=8)
+            resp = requests.get(rss_url, headers=HTTP_HEADERS, timeout=8)
             if resp.status_code == 200:
                 soup = BeautifulSoup(resp.content, "xml")
                 items = soup.find_all("item")
@@ -798,10 +809,12 @@ def send_910_am_table_report():
                     if is_within_24h and title:
                         display_name, yf_symbol = extract_single_stock_only(title)
                         if display_name and yf_symbol:
-                            sent, _ = analyze_sentiment(title)
-                            if "NEUTRAL" not in sent:
-                                news_24h.append({"stock": display_name, "sentiment": sent, "title": title, "link": link})
-                                news_watched_stocks.add((display_name, yf_symbol))
+                            st_price = get_accurate_price(yf_symbol)
+                            if st_price >= 200:
+                                sent, _ = analyze_sentiment(title)
+                                if "NEUTRAL" not in sent:
+                                    news_24h.append({"stock": display_name, "sentiment": sent, "title": title, "link": link})
+                                    news_watched_stocks.add((display_name, yf_symbol))
         except Exception:
             pass
 
@@ -809,7 +822,7 @@ def send_910_am_table_report():
     for item in news_24h:
         unique_table[item["stock"]] = item
 
-    msg += "📰 <b>24-HOUR SPECIFIC STOCK RADAR:</b>\n"
+    msg += "📰 <b>24-HOUR SPECIFIC STOCK RADAR (>₹200):</b>\n"
     if unique_table:
         for st, item in unique_table.items():
             if item.get('link'):
@@ -819,7 +832,7 @@ def send_910_am_table_report():
         
         msg += f"🔍 <i>Total {len(unique_table)} specific stocks active on 3-Min Radar!</i>\n"
     else:
-        msg += "ℹ️ <i>No specific stock news detected in the last 24 hours.</i>\n"
+        msg += "ℹ️ <i>No specific stock news (>₹200) detected in the last 24 hours.</i>\n"
 
     msg += "═════════════════════════\n"
     msg += "🤖 <i>Shambhu's Live Precision Radar Engine</i>"
@@ -937,7 +950,7 @@ if __name__ == "__main__":
     t.daemon = True
     t.start()
 
-    send_telegram_alert("🚀 <b>Radar Engine Active & Updated with Superfast Speed & Interactive Buttons!</b>")
+    send_telegram_alert("🚀 <b>Radar Engine Active! Price Filter (>₹200) & Moneycontrol Fix Applied!</b>")
 
     while True:
         try:
