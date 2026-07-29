@@ -48,6 +48,7 @@ TELEGRAM_BOT_TOKEN = "8634800722:AAESXRx8Xx3i1mqQvJCsh8ecLd0eP3kPdJQ"
 TELEGRAM_CHAT_ID = "1106122116"
 CHECK_INTERVAL = 15  # दर १५ सेकंदांनी स्कॅनिंग
 MAX_RISK_PER_TRADE = 1000  # एका ट्रेडमधील कमाल रिस्क (₹)
+NEWS_COOLDOWN_SECONDS = 300  # एका स्टॉकच्या २ बातम्यांमध्ये ५ मिनिटांचा फरक (Duplicate Stop)
 
 HTTP_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -147,6 +148,7 @@ news_watched_stocks = set()
 
 stock_latest_news_time = {}  
 stock_sentiment_counts = {}   
+last_news_alert_time = {}  # ⏱️ एका स्टॉकच्या न्यूज अलर्टचा ५ मिनिटांचा लॉक
 
 day_news_log = []
 day_plus_signals_log = []
@@ -557,9 +559,11 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
     return None
 
 def fetch_and_collect_stock_news():
-    global seen_news_titles, news_watched_stocks, day_news_log, stock_sentiment_counts, stock_latest_news_time
+    global seen_news_titles, news_watched_stocks, day_news_log, stock_sentiment_counts, stock_latest_news_time, last_news_alert_time
 
     new_news_items = []
+    cycle_seen_symbols = set()  # एका स्कॅन सायकलमध्ये एकाच स्टॉकची डुप्लिकेट न्युज येणे बंद
+    now_ist = datetime.now(IST)
 
     for rss_url in INDIAN_NEWS_FEEDS:
         try:
@@ -582,15 +586,23 @@ def fetch_and_collect_stock_news():
                     if title:
                         norm_title = normalize_text(title)
 
-                        # १. डुप्लिकेट न्युज फिल्टर
+                        # १. आधी पाठवलेली हीच हेडलाईन फिल्टर करणे
                         if norm_title in seen_news_titles:
                             continue
 
                         display_name, yf_symbol = extract_single_stock_only(title)
                         
                         if display_name and yf_symbol:
-                            # बातमी दिसताच लगेच ब्लॅकलिस्ट करणे
                             seen_news_titles.add(norm_title)
+
+                            # २. चालू स्कॅन सायकलमध्ये या स्टॉकची बातमी आधीच घेतली असेल तर स्किप करा
+                            if yf_symbol in cycle_seen_symbols:
+                                continue
+
+                            # ३. ⏱️ स्टॉक कुलडाऊन चेकिंग (५ मिनिटांच्या आत पुन्हा न्यूज अलर्ट जाणार नाही)
+                            last_alert_time = last_news_alert_time.get(yf_symbol)
+                            if last_alert_time and (now_ist - last_alert_time).total_seconds() < NEWS_COOLDOWN_SECONDS:
+                                continue
 
                             prev_pub_time = stock_latest_news_time.get(yf_symbol)
                             if prev_pub_time and exact_pub_time <= prev_pub_time:
@@ -606,6 +618,7 @@ def fetch_and_collect_stock_news():
                                     continue
 
                                 news_watched_stocks.add((display_name, yf_symbol))
+                                cycle_seen_symbols.add(yf_symbol) # एका स्कॅनसाठी स्टॉक लॉक
                                 
                                 if yf_symbol not in stock_sentiment_counts:
                                     stock_sentiment_counts[yf_symbol] = {"pos": 0, "neg": 0}
@@ -637,8 +650,12 @@ def fetch_and_collect_stock_news():
         except Exception:
             pass
 
-    # 📰 न्यूज मेसेज अलर्ट
+    # 📰 न्यूज मेसेज अलर्ट पाठवणे आणि कुलडाऊन टायमर अपडेट करणे
     if new_news_items and is_market_hours():
+        # अलर्ट पाठवल्यावर त्या सर्व स्टॉक्सवर ५ मिनिटांचा लॉक लावणे
+        for n in new_news_items:
+            last_news_alert_time[n['symbol']] = now_ist
+
         if len(new_news_items) == 1:
             n = new_news_items[0]
             link_html = f'<a href="{n["link"]}">{n["title"]}</a>' if n["link"] else f'<i>{n["title"]}</i>'
@@ -909,6 +926,7 @@ def send_330_pm_closing_summary():
     stock_sentiment_counts.clear()
     stock_latest_news_time.clear()
     seen_news_titles.clear()
+    last_news_alert_time.clear()
     TRADE_STATS["total_signals"] = 0
     TRADE_STATS["target_hit"] = 0
     TRADE_STATS["sl_hit"] = 0
@@ -976,7 +994,7 @@ if __name__ == "__main__":
     t.daemon = True
     t.start()
 
-    send_telegram_alert("🚀 <b>Radar Engine Active! Duplicate Alert Protection Enabled!</b>")
+    send_telegram_alert("🚀 <b>Radar Engine Active! Anti-Duplicate Batch News Protection Enabled!</b>")
 
     while True:
         try:
