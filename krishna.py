@@ -62,7 +62,6 @@ INDICES_MAP = {
     "^BSESN": "SENSEX",
 }
 
-# 🎯 तुमच्या रिक्वायरमेंटनुसार मूळ फिक्सड वॉचलिस्ट (Indices + Required Stocks)
 CORE_STOCKS_MAP = {
     "RELIANCE": "RELIANCE.NS",
     "HDFC BANK": "HDFCBANK.NS",
@@ -148,7 +147,7 @@ GLOBAL_NEWS_FEEDS = [
     "https://www.investing.com/rss/news.rss"
 ]
 
-# 🔒 24*7 Macro News Keywords List (Requested + Smart Additions)
+# 🔒 24*7 Macro News Keywords List (Whole-word safe)
 MACRO_KEYWORDS = [
     "fed", "federal reserve", "fomc", "jerome powell", "interest rate", 
     "rate cut", "rate hike", "repo rate", "rbi", "mpc", "cpi", "core cpi", 
@@ -166,7 +165,7 @@ last_signal_state = {}
 last_alert_candle_time = {}
 seen_news_titles = set()
 seen_macro_news_titles = set()
-news_watched_stocks = set()  # लाईव्ह मार्केट न्यूजमुळे जोडले गेलेले स्टॉक्स
+news_watched_stocks = set()
 
 stock_latest_news_time = {}  
 stock_sentiment_counts = {}   
@@ -441,7 +440,6 @@ def get_win_rate_summary_text():
     )
 
 def check_3min_plus_signal(symbol, display_name, is_index=False):
-    """3-Min EMA Crossover (+ Sign) Detection Logic."""
     global last_signal_state, last_alert_candle_time
 
     with SuppressStdout():
@@ -504,7 +502,6 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
             prev_ema9 = float(row_prev["EMA_9"])
             prev_ema26 = float(row_prev["EMA_26"])
 
-            # 🟢 EMA Crossover (+ Sign) Detection Logic
             fresh_bullish = (prev_ema9 <= prev_ema26) and (now_ema9 > now_ema26)
             fresh_bearish = (prev_ema9 >= prev_ema26) and (now_ema9 < now_ema26)
 
@@ -623,7 +620,6 @@ def fetch_and_collect_stock_news():
                                 if price < 200:
                                     continue
 
-                                # लाईव्ह मार्केट न्यूज स्टॉक्स वॉचलिस्टमध्ये ॲड करणे
                                 news_watched_stocks.add((display_name, yf_symbol))
                                 cycle_seen_symbols.add(yf_symbol)
                                 
@@ -654,11 +650,12 @@ def fetch_and_collect_stock_news():
         except Exception:
             pass
 
-# 🚀 24*7 Macro & Global News Keyword Alert Function (Newly Added Feature)
+# 🚀 24*7 Macro & Global News Keyword Alert (Neutral Removed + Whole-word safe + Batched Alerts)
 def check_macro_and_global_news():
     global seen_macro_news_titles
     all_feeds = INDIAN_NEWS_FEEDS + GLOBAL_NEWS_FEEDS
     now_ist = datetime.now(IST)
+    batch_news_items = []
 
     for rss_url in all_feeds:
         try:
@@ -683,7 +680,9 @@ def check_macro_and_global_news():
                     title_lower = title.lower()
                     matched_kw = None
                     for kw in MACRO_KEYWORDS:
-                        if kw in title_lower:
+                        # 🔒 Whole-word boundary regex (prevents sub-word matching like "war" in "reward")
+                        pattern = r"(?<![a-zA-Z0-9])" + re.escape(kw) + r"(?![a-zA-Z0-9])"
+                        if re.search(pattern, title_lower):
                             matched_kw = kw
                             break
 
@@ -691,24 +690,40 @@ def check_macro_and_global_news():
                         seen_macro_news_titles.add(norm_title)
                         sentiment, _ = analyze_sentiment(title)
 
-                        msg = (
-                            f"🚨 <b>[24*7 MACRO & GLOBAL NEWS ALERT]</b> 🚨\n"
-                            f"📅 <i>{now_ist.strftime('%d-%b-%Y | %I:%M:%S %p')}</i>\n"
-                            f"═════════════════════════\n\n"
-                            f"🔑 <b>Trigger Keyword:</b> <code>{matched_kw.upper()}</code>\n"
-                            f"📊 <b>Sentiment:</b> {sentiment}\n"
-                            f"📰 <b>News:</b> <a href=\"{link}\">{title}</a>\n\n"
-                            f"═════════════════════════\n"
-                            f"🤖 <i>Shambhu's Live Precision Radar Engine</i>"
-                        )
-                        send_telegram_alert(msg)
+                        # ❌ Remove Neutral news (User Requirement)
+                        if "NEUTRAL" in sentiment:
+                            continue
+
+                        batch_news_items.append({
+                            "keyword": matched_kw.upper(),
+                            "sentiment": sentiment,
+                            "title": title,
+                            "link": link
+                        })
         except Exception:
             pass
+
+    # 📦 Send all collected non-neutral news in ONE single batched message if any exist
+    if batch_news_items:
+        msg = (
+            f"🚨 <b>[24*7 MACRO & GLOBAL NEWS ALERT]</b> 🚨\n"
+            f"📅 <i>{now_ist.strftime('%d-%b-%Y | %I:%M:%S %p')}</i>\n"
+            f"═════════════════════════\n\n"
+        )
+        for idx, n_item in enumerate(batch_news_items, 1):
+            msg += (
+                f"<b>{idx}. Keyword:</b> <code>{n_item['keyword']}</code> | {n_item['sentiment']}\n"
+                f"📰 <a href=\"{n_item['link']}\">{n_item['title']}</a>\n\n"
+            )
+        msg += (
+            f"═════════════════════════\n"
+            f"🤖 <i>Shambhu's Live Precision Radar Engine</i>"
+        )
+        send_telegram_alert(msg)
 
 def send_instant_plus_signal_alert(sig):
     now_str = datetime.now(IST).strftime("%d-%b-%Y | %I:%M:%S %p")
     
-    # फक्‍त जर संबंधित स्टॉकची बातमी असेल तरच न्यूज लिंक ॲड करणे
     matched_news = [n for n in day_news_log if n['stock'] == sig['name']]
     if matched_news:
         latest_n = matched_news[-1]
@@ -767,7 +782,6 @@ def send_instant_plus_signal_alert(sig):
 # ==================== SCHEDULED REPORTS ====================
 
 def send_845_am_premarket_report():
-    """2. Off Market 8:45 AM Global Sentiment & News Link Alert"""
     now_ist = datetime.now(IST)
     macros = fetch_macro_indicators()
     news_items = fetch_clickable_global_news_list()
@@ -797,7 +811,6 @@ def send_845_am_premarket_report():
     send_telegram_alert(msg)
 
 def send_910_am_table_report():
-    """3. 9:10 AM Indian Market Sentiment & Past 24 Hours News Links"""
     now_ist = datetime.now(IST)
     news_24h = []
 
@@ -866,7 +879,6 @@ def send_910_am_table_report():
     send_telegram_alert(msg)
 
 def send_330_pm_closing_summary():
-    """4. 3:30 PM Details from 9:15 to 3:30 with Win Rate Accuracy"""
     now_ist = datetime.now(IST)
     win_rate_summary = get_win_rate_summary_text()
 
@@ -895,7 +907,6 @@ def send_330_pm_closing_summary():
 
     send_telegram_alert(msg)
 
-    # रीसेट करणे
     day_news_log.clear()
     day_plus_signals_log.clear()
     stock_sentiment_counts.clear()
@@ -934,28 +945,21 @@ def scan_and_alert():
         send_330_pm_closing_summary()
         last_sent_330_date = today_date
 
-    # 🚀 24*7 Macro & Global News Keyword Scanning (Runs Round-the-Clock)
+    # 🚀 24*7 Macro & Global News Keyword Scanning (Batch Mode & Neutral Filtered)
     check_macro_and_global_news()
 
-    # १. लाईव्ह मार्केट बातम्या फेच करणे व वॉचलिस्ट अपडेट करणे
     fetch_and_collect_stock_news()
-
-    # २. ओपन ट्रेड्सचे Target / SL ट्रॅक करणे
     update_and_check_trade_outcomes()
 
-    # ३. लाईव्ह मार्केट स्कॅनिंग (फक्त EMA Crossover + Sign वर अलर्ट)
     if is_market_hours():
         scan_dict = {}
 
-        # इंडायसेस ॲड करणे
         for index_sym, index_name in INDICES_MAP.items():
             scan_dict[index_sym] = (index_sym, index_name, True)
 
-        # मूळ फिक्सड स्टॉक्स ॲड करणे (Reliance, HDFC Bank, Infosys, Tata Motors, Bajaj Finance, L&T)
         for s_name, s_sym in CORE_STOCKS_MAP.items():
             scan_dict[s_sym] = (s_sym, s_name, False)
 
-        # लाईव्ह न्यूजमुळे जोडले गेलेले स्टॉक्स ॲड करणे
         for s_name, s_sym in list(news_watched_stocks):
             if s_sym not in scan_dict:
                 scan_dict[s_sym] = (s_sym, s_name, False)
