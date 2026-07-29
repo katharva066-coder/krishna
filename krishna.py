@@ -49,7 +49,6 @@ TELEGRAM_CHAT_ID = "1106122116"
 CHECK_INTERVAL = 15  # दर १५ सेकंदांनी स्कॅनिंग
 MAX_RISK_PER_TRADE = 1000  # एका ट्रेडमधील कमाल रिस्क (₹)
 
-# 🌐 Moneycontrol ब्लॉक टाळण्यासाठी रिअल ब्राऊजर हेडर
 HTTP_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 }
@@ -62,7 +61,6 @@ INDICES_MAP = {
     "^BSESN": "SENSEX",
 }
 
-# Nifty 50 मधील मुख्य वेटेज स्टॉक्स
 NIFTY_WEIGHTAGE_STOCKS = {
     "HDFC Bank": "HDFCBANK.NS",
     "Reliance": "RELIANCE.NS",
@@ -139,7 +137,6 @@ GLOBAL_NEWS_FEEDS = [
     "https://www.investing.com/rss/news.rss"
 ]
 
-# CACHE, LOGGING & WIN-RATE TRACKER STATES
 last_signal_state = {}
 last_alert_candle_time = {}
 seen_news_titles = set()
@@ -149,13 +146,12 @@ stock_news_tracker = {}
 day_news_log = []
 day_plus_signals_log = []
 
-# WIN-RATE ACCURACY STATS
 TRADE_STATS = {
     "total_signals": 0,
     "target_hit": 0,
     "sl_hit": 0
 }
-ACTIVE_MONITORED_TRADES = []  # लाईव्ह सिग्नल टार्गेट/स्टॉपलॉस ट्रॅकिंगसाठी
+ACTIVE_MONITORED_TRADES = []
 
 last_sent_845_date = ""
 last_sent_910_date = ""
@@ -171,7 +167,6 @@ def run_server():
     port = int(os.environ.get("PORT", 8080))
     flask_app.run(host="0.0.0.0", port=port)
 
-# 🎯 TELEGRAM ALERT WITH INLINE BUTTONS SUPPORT
 def send_telegram_alert(message, reply_markup=None):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
@@ -365,9 +360,7 @@ def fetch_clickable_global_news_list():
             
     return news_items[:5]
 
-# 🎯 WIN-RATE ACCURACY LOGIC
 def update_and_check_trade_outcomes():
-    """दिवसभरातील सिग्नलचे Target Hit किंवा SL Hit ऑटो-चेक करणे"""
     global ACTIVE_MONITORED_TRADES, TRADE_STATS
     if not is_market_hours() or not ACTIVE_MONITORED_TRADES:
         return
@@ -416,7 +409,7 @@ def get_win_rate_summary_text():
         f"• Win Rate Accuracy: <b>{win_rate:.1f}%</b> 🎯\n"
     )
 
-# 🎯 ORIGINAL CORE SIGNAL LOGIC (WITH ₹200 PRICE FILTER)
+# 🎯 3-MIN EMA CROSS SIGNAL LOGIC (RSI/VWAP/SUPERTREND STATUS ONLY)
 def check_3min_plus_signal(symbol, display_name, is_index=False):
     global last_signal_state, last_alert_candle_time
 
@@ -436,18 +429,17 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
             if current_close == 0.0:
                 current_close = float(df["Close"].iloc[-1])
 
-            # 🛑 FILTER: ₹२०० पेक्षा कमी किमतीच्या स्टॉक्ससाठी कोणतेही अलर्ट नको (इंडायसेस सोडता)
+            # ₹२०० पेक्षा कमी किमतीच्या स्टॉक्ससाठी कोणतेही अलर्ट नको (इंडायसेस सोडता)
             if not is_index and current_close < 200:
                 return None
 
-            # --- ORIGINAL INDICATORS ---
             df["EMA_9"] = EMAIndicator(close=df["Close"], window=9).ema_indicator()
             df["EMA_26"] = EMAIndicator(close=df["Close"], window=26).ema_indicator()
             df["ATR_14"] = AverageTrueRange(high=df["High"], low=df["Low"], close=df["Close"], window=14).average_true_range()
             df["RSI_14"] = RSIIndicator(close=df["Close"], window=14).rsi()
             df["Vol_SMA"] = df["Volume"].rolling(window=20).mean()
 
-            # 📌 INFO ONLY: VWAP & SUPERTREND (नो अलर्ट फिल्टरिंग)
+            # VWAP & SUPERTREND (फक्त मॅसेजमध्ये स्टेटस दाखवण्यासाठी)
             tp = (df["High"] + df["Low"] + df["Close"]) / 3
             df["VWAP"] = (tp * df["Volume"]).cumsum() / df["Volume"].cumsum()
             current_vwap = round(float(df["VWAP"].iloc[-1]), 2) if not df["VWAP"].empty else float(df["Close"].iloc[-1])
@@ -483,9 +475,9 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
             prev_ema9 = float(row_prev["EMA_9"])
             prev_ema26 = float(row_prev["EMA_26"])
 
-            # 🎯 exact original signal conditions preserved
-            is_bullish_now = (now_ema9 > now_ema26) and (rsi_val >= 50)
-            is_bearish_now = (now_ema9 < now_ema26) and (rsi_val <= 50)
+            # 🎯 Pure 3-Min EMA Cross (RSI चा अट काढला आहे)
+            is_bullish_now = (now_ema9 > now_ema26)
+            is_bearish_now = (now_ema9 < now_ema26)
 
             fresh_bullish = is_bullish_now and (prev_ema9 <= prev_ema26)
             fresh_bearish = is_bearish_now and (prev_ema9 >= prev_ema26)
@@ -512,7 +504,6 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
                     stop_loss = current_close + (atr_val * 1.5)
                     target = current_close - ((stop_loss - current_close) * 1.5)
 
-                # 🧮 Auto Position Sizing Calculator
                 risk_per_share = abs(current_close - stop_loss)
                 recommended_qty = int(MAX_RISK_PER_TRADE / risk_per_share) if risk_per_share > 0 else 1
 
@@ -540,7 +531,6 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
 
                 day_plus_signals_log.append(sig_obj)
                 
-                # Win-Rate tracker update
                 TRADE_STATS["total_signals"] += 1
                 ACTIVE_MONITORED_TRADES.append({
                     "symbol": symbol,
@@ -559,8 +549,11 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
 
     return None
 
+# 🎯 MULTI-NEWS BATCH ALERT LOGIC (एकाच वेळी अनेक बातम्या आल्यास एकत्र मेसेज पाठवणे)
 def fetch_and_collect_stock_news():
     global seen_news_titles, news_watched_stocks, day_news_log, stock_news_tracker
+
+    new_news_items = []
 
     for rss_url in INDIAN_NEWS_FEEDS:
         try:
@@ -598,7 +591,6 @@ def fetch_and_collect_stock_news():
 
                                         price = get_accurate_price(yf_symbol)
                                         
-                                        # 🛑 FILTER: ₹२०० पेक्षा कमी किमतीच्या स्टॉक्ससाठी न्यूज अलर्ट्स पाठवू नका
                                         if price < 200:
                                             continue
 
@@ -628,26 +620,46 @@ def fetch_and_collect_stock_news():
                                         }
 
                                         day_news_log.append(news_obj)
-
-                                        if is_market_hours():
-                                            link_html = f'<a href="{link}">{title}</a>' if link else f'<i>{title}</i>'
-                                            news_alert_msg = (
-                                                f"📰 <b>LIVE STOCK NEWS ALERT</b>\n"
-                                                f"🏢 <b>#{display_name}</b> | {dots_str}\n"
-                                                f"═════════════════════════\n"
-                                                f"• 📰 <b>Headline:</b> {link_html}\n"
-                                                f"• 📊 <b>Sentiment:</b> {sentiment}\n"
-                                                f"• ⏰ <b>Time:</b> {pub_time_formatted}\n"
-                                                f"• 💰 <b>Price:</b> ₹{price:,.2f}\n"
-                                                f"═════════════════════════\n"
-                                                f"🤖 <i>Shambhu's Live Precision Radar Engine</i>"
-                                            )
-                                            send_telegram_alert(news_alert_msg)
+                                        new_news_items.append(news_obj)
 
         except Exception:
             pass
 
-# 🎯 INSTANT ALERT WITH BUTTONS, RISK CALC & WIN RATE
+    # 📰 जर एकापेक्षा जास्त बातम्या एकत्र आल्या तर एकच Grouped Alert पाठवणे
+    if new_news_items and is_market_hours():
+        if len(new_news_items) == 1:
+            n = new_news_items[0]
+            link_html = f'<a href="{n["link"]}">{n["title"]}</a>' if n["link"] else f'<i>{n["title"]}</i>'
+            news_alert_msg = (
+                f"📰 <b>LIVE STOCK NEWS ALERT</b>\n"
+                f"🏢 <b>#{n['stock']}</b> | {n['dots']}\n"
+                f"═════════════════════════\n"
+                f"• 📰 <b>Headline:</b> {link_html}\n"
+                f"• 📊 <b>Sentiment:</b> {n['sentiment']}\n"
+                f"• ⏰ <b>Time:</b> {n['time']}\n"
+                f"• 💰 <b>Price:</b> ₹{n['price']:,.2f}\n"
+                f"═════════════════════════\n"
+                f"🤖 <i>Shambhu's Live Precision Radar Engine</i>"
+            )
+            send_telegram_alert(news_alert_msg)
+        else:
+            now_str = datetime.now(IST).strftime("%I:%M:%S %p")
+            news_alert_msg = (
+                f"📰 <b>LIVE MULTI-STOCK NEWS BATCH ALERT</b> ({len(new_news_items)})\n"
+                f"⏰ <i>{now_str}</i>\n"
+                f"═════════════════════════\n\n"
+            )
+            for n in new_news_items:
+                link_html = f'<a href="{n["link"]}">{n["title"]}</a>' if n["link"] else f'<i>{n["title"]}</i>'
+                news_alert_msg += (
+                    f"🏢 <b>#{n['stock']}</b> | {n['dots']} ({n['sentiment']})\n"
+                    f"• 📰 {link_html}\n"
+                    f"• 💰 Price: ₹{n['price']:,.2f}\n"
+                    f"-----------------------------------------\n"
+                )
+            news_alert_msg += "🤖 <i>Shambhu's Live Precision Radar Engine</i>"
+            send_telegram_alert(news_alert_msg)
+
 def send_instant_plus_signal_alert(sig):
     now_str = datetime.now(IST).strftime("%d-%b-%Y | %I:%M:%S %p")
     
@@ -692,7 +704,6 @@ def send_instant_plus_signal_alert(sig):
         f"🤖 <i>Shambhu's Live Precision Radar Engine</i>"
     )
 
-    # 🎯 TELEGRAM INLINE BUTTONS SETUP
     clean_sym = sig['symbol'].replace('.NS', '')
     reply_markup = {
         "inline_keyboard": [
@@ -880,7 +891,6 @@ def send_330_pm_closing_summary():
 
     send_telegram_alert(msg)
 
-    # दिवस संपल्यावर रिसेट करणे
     day_news_log.clear()
     day_plus_signals_log.clear()
     stock_news_tracker.clear()
@@ -889,7 +899,6 @@ def send_330_pm_closing_summary():
     TRADE_STATS["sl_hit"] = 0
     ACTIVE_MONITORED_TRADES.clear()
 
-# Helper for parallel execution
 def _scan_single_item(item):
     sym, name, is_idx = item
     sig = check_3min_plus_signal(sym, name, is_index=is_idx)
@@ -904,7 +913,6 @@ def scan_and_alert():
     current_time = now_ist.strftime("%H:%M")
     today_date = now_ist.strftime("%Y-%m-%d")
 
-    # १. वेळेवर आधारित डेली रिपोर्ट्स
     if current_time == "08:45" and last_sent_845_date != today_date:
         send_845_am_premarket_report()
         last_sent_845_date = today_date
@@ -917,29 +925,25 @@ def scan_and_alert():
         send_330_pm_closing_summary()
         last_sent_330_date = today_date
 
-    # २. लाईव्ह बातम्या फेच करणे
+    # १. लाईव्ह बातम्या फेच करणे (अनेक बातम्या आल्यास १ मेसेज अलर्ट)
     fetch_and_collect_stock_news()
 
-    # ३. ओपन ट्रेड्सचे Target & SL चेक करणे
+    # २. ओपन ट्रेड्स Target / SL अपडेट
     update_and_check_trade_outcomes()
 
-    # 🎯 ⚡ PARALLEL SCANNING (सुपरफास्ट स्पीडसाठी ThreadPoolExecutor)
+    # ३. समांतर (Parallel) 3-Min EMA scanning
     if is_market_hours():
         scan_items = []
         
-        # A. इंडायसेस
         for index_sym, index_name in INDICES_MAP.items():
             scan_items.append((index_sym, index_name, True))
 
-        # B. बातम्या आलेले स्टॉक्स
         for s_name, s_sym in list(news_watched_stocks):
             scan_items.append((s_sym, s_name, False))
 
-        # C. Nifty 50 Weightage स्टॉक्स
         for w_name, w_sym in NIFTY_WEIGHTAGE_STOCKS.items():
             scan_items.append((w_sym, w_name, False))
 
-        # समांतर पद्धतीने (Parallel) एकाच वेळी सर्व स्कॅन करणे
         with ThreadPoolExecutor(max_workers=10) as executor:
             executor.map(_scan_single_item, scan_items)
 
@@ -950,7 +954,7 @@ if __name__ == "__main__":
     t.daemon = True
     t.start()
 
-    send_telegram_alert("🚀 <b>Radar Engine Active! Price Filter (>₹200) & Moneycontrol Fix Applied!</b>")
+    send_telegram_alert("🚀 <b>Radar Engine Active! Pure 3-Min EMA Cross & Multi-News Batch Mode Enabled!</b>")
 
     while True:
         try:
