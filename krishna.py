@@ -421,6 +421,7 @@ def get_win_rate_summary_text():
     )
 
 def check_3min_plus_signal(symbol, display_name, is_index=False):
+    """omkar.py + shakti.py मधील 3-Min EMA Crossover (+ Signal) Detect logic."""
     global last_signal_state, last_alert_candle_time
 
     with SuppressStdout():
@@ -483,20 +484,20 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
             prev_ema9 = float(row_prev["EMA_9"])
             prev_ema26 = float(row_prev["EMA_26"])
 
-            is_bullish_now = (now_ema9 > now_ema26)
-            is_bearish_now = (now_ema9 < now_ema26)
+            # 🟢🔴 omkar.py चे EMA_9 आणि EMA_26 Pure Crossover Signal Detect logic
+            fresh_bullish = (prev_ema9 <= prev_ema26) and (now_ema9 > now_ema26)
+            fresh_bearish = (prev_ema9 >= prev_ema26) and (now_ema9 < now_ema26)
 
-            fresh_bullish = is_bullish_now and (prev_ema9 <= prev_ema26)
-            fresh_bearish = is_bearish_now and (prev_ema9 >= prev_ema26)
+            if fresh_bullish:
+                current_direction = "BULLISH"
+            elif fresh_bearish:
+                current_direction = "BEARISH"
+            else:
+                current_direction = "NONE"
 
-            current_direction = "BULLISH" if is_bullish_now else ("BEARISH" if is_bearish_now else "NONE")
-            prev_direction = last_signal_state.get(symbol, "NONE")
-
-            is_fresh_signal = (fresh_bullish or fresh_bearish) or (current_direction != "NONE" and prev_direction == "NONE")
-
-            # 🔒 THREAD SAFETY LOCK (डबल अलर्ट पूर्णपणे बंद करण्यासाठी)
+            # 🔒 THREAD SAFETY LOCK (डबल किंवा डुप्लिकेट अलर्ट पूर्णपणे रोखण्यासाठी)
             with signal_lock:
-                if is_fresh_signal and current_direction != "NONE":
+                if current_direction != "NONE":
                     if last_alert_candle_time.get(symbol) == candle_timestamp:
                         return None
 
@@ -551,7 +552,10 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
                     return sig_obj
 
                 else:
-                    last_signal_state[symbol] = current_direction
+                    if now_ema9 > now_ema26:
+                        last_signal_state[symbol] = "BULLISH"
+                    elif now_ema9 < now_ema26:
+                        last_signal_state[symbol] = "BEARISH"
 
         except Exception:
             pass
@@ -994,7 +998,7 @@ if __name__ == "__main__":
     t.daemon = True
     t.start()
 
-    send_telegram_alert("🚀 <b>Radar Engine Active! Anti-Duplicate Batch News Protection Enabled!</b>")
+    send_telegram_alert("🚀 <b>Radar Engine Active! EMA Crossover & News Protection Enabled!</b>")
 
     while True:
         try:
