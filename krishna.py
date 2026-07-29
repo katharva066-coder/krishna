@@ -613,6 +613,11 @@ def fetch_and_collect_stock_news():
                     pub_date_raw = item.pubDate.text.strip() if item.pubDate else ""
 
                     exact_pub_time = parse_exact_pub_date(pub_date_raw)
+                    
+                    # 🛑 जुन्या बातम्या गाळणे (फक्त गेल्या १ तासातील किंवा त्यापेक्षा ताज्या बातम्या ग्राह्य धरल्या जातील)
+                    if (now_ist - exact_pub_time).total_seconds() > 3600:
+                        continue
+
                     pub_time_formatted = exact_pub_time.strftime("%I:%M:%S %p")
 
                     if title:
@@ -670,7 +675,7 @@ def fetch_and_collect_stock_news():
         except Exception:
             pass
 
-# 🚀 24*7 Macro & Global News Keyword Alert (Neutral Removed + Whole-word safe + Batched Alerts)
+# 🚀 24*7 Macro & Global News Keyword Alert (Neutral Removed + Time Validation Filter)
 def check_macro_and_global_news():
     global seen_macro_news_titles
     all_feeds = INDIAN_NEWS_FEEDS + GLOBAL_NEWS_FEEDS
@@ -690,7 +695,14 @@ def check_macro_and_global_news():
                 for item in items[:15]:
                     title = item.title.text.strip() if item.title else ""
                     link = item.link.text.strip() if item.link else ""
+                    pub_date_raw = item.pubDate.text.strip() if item.pubDate else ""
                     if not title or not link:
+                        continue
+
+                    exact_pub_time = parse_exact_pub_date(pub_date_raw)
+                    
+                    # 🛑 अतिशय महत्त्वाची सुधारणा: ३० मिनिटांपेक्षा जुन्या बातम्यांचे अलर्ट्स पूर्णपणे गाळले जातील!
+                    if (now_ist - exact_pub_time).total_seconds() > 1800:
                         continue
 
                     norm_title = normalize_text(title)
@@ -700,7 +712,6 @@ def check_macro_and_global_news():
                     title_lower = title.lower()
                     matched_kw = None
                     for kw in MACRO_KEYWORDS:
-                        # 🔒 Whole-word boundary regex (prevents sub-word matching like "war" in "reward")
                         pattern = r"(?<![a-zA-Z0-9])" + re.escape(kw) + r"(?![a-zA-Z0-9])"
                         if re.search(pattern, title_lower):
                             matched_kw = kw
@@ -710,7 +721,6 @@ def check_macro_and_global_news():
                         seen_macro_news_titles.add(norm_title)
                         sentiment, _ = analyze_sentiment(title)
 
-                        # ❌ Remove Neutral news (User Requirement)
                         if "NEUTRAL" in sentiment:
                             continue
 
@@ -723,7 +733,6 @@ def check_macro_and_global_news():
         except Exception:
             pass
 
-    # 📦 Send all collected non-neutral news in ONE single batched message if any exist
     if batch_news_items:
         msg = (
             f"🚨 <b>[24*7 MACRO & GLOBAL NEWS ALERT]</b> 🚨\n"
@@ -779,7 +788,7 @@ def send_instant_plus_signal_alert(sig):
     msg += (
         f"• 🛑 <b>SL:</b> ₹{sig['sl']:,.2f} | 🎯 <b>Target:</b> ₹{sig['target']:,.2f}\n"
         f"═════════════════════════\n"
-        f"{win_rate_summary}"
+        f"{win_rate_summary}\n"
         f"═════════════════════════\n"
         f"🤖 <i>Shambhu's Live Precision Radar Engine</i>"
     )
@@ -911,8 +920,8 @@ def send_330_pm_closing_summary():
         msg += f"• <b>{idx_name}:</b> ₹{get_accurate_price(idx_sym):,.2f}\n"
     msg += "\n-----------------------------------------\n\n"
 
-    msg += f"{win_rate_summary}"
-    msg += "\n-----------------------------------------\n\n"
+    msg += f"{win_rate_summary}\n"
+    msg += "-----------------------------------------\n\n"
 
     msg += f"🔥 <b>TODAY'S EMA CROSSOVER (+) SIGNALS ({len(day_plus_signals_log)}):</b>\n"
     if day_plus_signals_log:
@@ -965,7 +974,7 @@ def scan_and_alert():
         send_330_pm_closing_summary()
         last_sent_330_date = today_date
 
-    # 🚀 24*7 Macro & Global News Keyword Scanning (Batch Mode & Neutral Filtered)
+    # 🚀 24*7 Macro & Global News Keyword Scanning (Time-Filtered)
     check_macro_and_global_news()
 
     fetch_and_collect_stock_news()
