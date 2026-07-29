@@ -157,9 +157,9 @@ class SmartCache:
     def __init__(self):
         self.cache: Dict[str, Tuple[float, float]] = {}
         self.priority_ttl = {
-            'high': 10,   # High priority stocks - 10 seconds
-            'medium': 8,  # Medium priority - 8 seconds
-            'low': 5      # Low priority - 5 seconds
+            'high': 10,
+            'medium': 8,
+            'low': 5
         }
         
     def get_priority(self, symbol: str) -> str:
@@ -216,7 +216,6 @@ class PerformanceMonitor:
         self.signal_queue = Queue()
         
     def record_scan(self, duration: float):
-        """Record scan duration"""
         self.metrics['scans'] += 1
         self.scan_times.append(duration)
         if len(self.scan_times) > 100:
@@ -224,7 +223,6 @@ class PerformanceMonitor:
         self.metrics['avg_scan_time'] = sum(self.scan_times) / len(self.scan_times)
         
     def record_signal(self, priority: str = 'low'):
-        """Record signal detection with priority"""
         self.metrics['signals_detected'] += 1
         if priority == 'high':
             self.metrics['high_priority_signals'] += 1
@@ -234,34 +232,27 @@ class PerformanceMonitor:
             self.metrics['low_priority_signals'] += 1
         
     def record_news(self):
-        """Record news processed"""
         self.metrics['news_processed'] += 1
         
     def record_macro_news(self):
-        """Record macro news processed"""
         self.metrics['macro_news_processed'] += 1
         
     def record_api_error(self):
-        """Record API error"""
         self.metrics['api_errors'] += 1
         
     def record_cache_hit(self):
-        """Record cache hit"""
         self.metrics['cache_hits'] += 1
         
     def record_cache_miss(self):
-        """Record cache miss"""
         self.metrics['cache_misses'] += 1
         
     def record_trade_result(self, result: str):
-        """Record trade result"""
         self.metrics['total_trades'] += 1
         if result == 'WIN':
             self.metrics['winning_trades'] += 1
         self.metrics['win_rate'] = (self.metrics['winning_trades'] / self.metrics['total_trades'] * 100) if self.metrics['total_trades'] > 0 else 0
         
     def get_uptime(self) -> str:
-        """Get system uptime"""
         uptime_seconds = int(time.time() - self.start_time)
         hours = uptime_seconds // 3600
         minutes = (uptime_seconds % 3600) // 60
@@ -269,12 +260,10 @@ class PerformanceMonitor:
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     
     def get_cache_hit_rate(self) -> float:
-        """Get cache hit rate"""
         total = self.metrics['cache_hits'] + self.metrics['cache_misses']
         return (self.metrics['cache_hits'] / total * 100) if total > 0 else 0
         
     def get_status_report(self) -> str:
-        """Get complete status report"""
         return f"""
 📊 <b>SYSTEM PERFORMANCE STATUS</b>
 ═════════════════════════
@@ -297,7 +286,6 @@ monitor = PerformanceMonitor()
 
 # ==================== SUPPRESS STDOUT ====================
 class SuppressStdout:
-    """Suppress stdout/stderr for specific operations"""
     def __enter__(self):
         self._original_stdout = sys.stdout
         self._original_stderr = sys.stderr
@@ -310,7 +298,6 @@ class SuppressStdout:
 
 # ==================== RETRY DECORATOR ====================
 def retry_on_failure(max_retries: int = 3, delay: float = 1, backoff: float = 2):
-    """Retry decorator with exponential backoff"""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -331,7 +318,6 @@ def retry_on_failure(max_retries: int = 3, delay: float = 1, backoff: float = 2)
 
 # ==================== RATE LIMITER ====================
 class RateLimiter:
-    """Rate limiter for API calls"""
     def __init__(self, max_calls: int = 10, period: int = 60):
         self.calls: Dict[str, List[float]] = defaultdict(list)
         self.max_calls = max_calls
@@ -342,7 +328,6 @@ class RateLimiter:
         def wrapper(*args, **kwargs):
             key = func.__name__
             now = time.time()
-            # Clean old calls
             self.calls[key] = [t for t in self.calls[key] if now - t < self.period]
             if len(self.calls[key]) >= self.max_calls:
                 logger.warning(f"Rate limit exceeded for {key}, waiting...")
@@ -355,19 +340,16 @@ rate_limiter = RateLimiter(max_calls=20, period=60)
 
 # ==================== THREAD POOL MANAGER ====================
 class ThreadPoolManager:
-    """Manage thread pool for scanning"""
     def __init__(self, max_workers: int = 10):
         self.max_workers = max_workers
         self.executor = None
         
     def get_executor(self):
-        """Get or create thread pool executor"""
         if self.executor is None:
             self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
         return self.executor
         
     def shutdown(self):
-        """Shutdown thread pool"""
         if self.executor:
             self.executor.shutdown(wait=False)
             self.executor = None
@@ -376,7 +358,6 @@ pool_manager = ThreadPoolManager(max_workers=config.MAX_WORKERS)
 
 # ==================== SMART NEWS FILTER ====================
 class SmartNewsFilter:
-    """Intelligent news filtering with quality scoring"""
     def __init__(self):
         self.trusted_sources = {
             'reuters.com': 10,
@@ -391,38 +372,32 @@ class SmartNewsFilter:
         self.blacklist_keywords = ['advertisement', 'sponsored', 'promotion', 'click here']
         
     def get_quality_score(self, link: str, title: str) -> int:
-        """Rate news quality"""
-        score = 5  # Default
+        score = 5
         
-        # Check source
         for source, quality in self.trusted_sources.items():
             if source in link.lower():
                 score = quality
                 break
         
-        # Check blacklist
         for keyword in self.blacklist_keywords:
             if keyword in title.lower():
                 score -= 3
         
-        # Check title length (more informative = better)
         if len(title) > 50:
             score += 2
         if len(title) > 100:
             score += 1
             
-        return max(1, min(10, score))  # Keep between 1-10
+        return max(1, min(10, score))
     
     def should_alert(self, news: Dict) -> bool:
-        """Decide if news should trigger alert"""
         quality = self.get_quality_score(news.get('link', ''), news.get('title', ''))
-        return quality >= 6  # Only send high quality news
+        return quality >= 6
 
 news_filter = SmartNewsFilter()
 
 # ==================== SMART SENTIMENT ANALYSIS ====================
 class SmartSentimentAnalyzer:
-    """Advanced sentiment analysis with context understanding"""
     def __init__(self):
         self.bullish_phrases = [
             "beats estimates", "above expectations", "record high", "all-time high",
@@ -443,24 +418,20 @@ class SmartSentimentAnalyzer:
         }
         
     def analyze(self, text: str) -> Tuple[str, int, int]:
-        """Return sentiment, score, and confidence"""
         text_lower = text.lower()
         score = 0
         phrase_matches = 0
         
-        # Check bullish phrases
         for phrase in self.bullish_phrases:
             if phrase in text_lower:
                 score += 2
                 phrase_matches += 1
         
-        # Check bearish phrases
         for phrase in self.bearish_phrases:
             if phrase in text_lower:
                 score -= 2
                 phrase_matches += 1
         
-        # Check modifiers (advanced)
         words = text_lower.split()
         for i, word in enumerate(words):
             if word in self.modifiers:
@@ -471,7 +442,6 @@ class SmartSentimentAnalyzer:
                     elif any(phrase in next_word for phrase in self.bearish_phrases):
                         score -= self.modifiers[word]
         
-        # Determine sentiment
         if score > 2:
             return "🟢 POSITIVE", abs(score), min(100, phrase_matches * 20)
         elif score < -2:
@@ -483,21 +453,17 @@ sentiment_analyzer = SmartSentimentAnalyzer()
 
 # ==================== CONFIDENCE & MOMENTUM SCORING ====================
 class SignalConfidenceScorer:
-    """Calculate signal confidence and momentum scores"""
     def __init__(self):
-        self.history = {}  # Store historical accuracy
+        self.history = {}
     
     def calculate_confidence(self, signal: SignalData) -> int:
-        """Calculate confidence score (0-100)"""
         confidence = 0
         
-        # 1. RSI (0-20 points)
         if 40 <= signal.rsi <= 60:
             confidence += 20
         elif 30 <= signal.rsi <= 70:
             confidence += 10
         
-        # 2. Volume (0-20 points)
         vol_ratio = float(signal.vol_ratio.replace('x', ''))
         if vol_ratio >= 2.0:
             confidence += 20
@@ -506,7 +472,6 @@ class SignalConfidenceScorer:
         elif vol_ratio >= 1.0:
             confidence += 10
         
-        # 3. VWAP alignment (0-15 points)
         if "Above VWAP" in signal.vwap_info and signal.direction == "BULLISH":
             confidence += 15
         elif "Below VWAP" in signal.vwap_info and signal.direction == "BEARISH":
@@ -516,7 +481,6 @@ class SignalConfidenceScorer:
         elif "Below VWAP" in signal.vwap_info and signal.direction == "BULLISH":
             confidence += 5
         
-        # 4. Supertrend alignment (0-15 points)
         if "Bullish" in signal.supertrend_info and signal.direction == "BULLISH":
             confidence += 15
         elif "Bearish" in signal.supertrend_info and signal.direction == "BEARISH":
@@ -524,7 +488,6 @@ class SignalConfidenceScorer:
         else:
             confidence += 5
         
-        # 5. News sentiment (0-15 points)
         matching_news = [n for n in day_news_log if n['symbol'] == signal.symbol]
         if matching_news:
             latest = matching_news[-1]
@@ -537,7 +500,6 @@ class SignalConfidenceScorer:
             elif "NEGATIVE" in latest['sentiment']:
                 confidence += 5
         
-        # 6. Historical accuracy (0-15 points)
         if signal.symbol in self.history:
             accuracy = self.history[signal.symbol].get('accuracy', 0)
             confidence += (accuracy * 15) / 100
@@ -545,7 +507,6 @@ class SignalConfidenceScorer:
         return min(100, confidence)
     
     def calculate_momentum(self, symbol: str) -> int:
-        """Calculate momentum score (-100 to +100)"""
         try:
             with SuppressStdout():
                 ticker = yf.Ticker(symbol)
@@ -553,15 +514,12 @@ class SignalConfidenceScorer:
                 if df.empty:
                     return 0
                 
-                # Price momentum
                 price_change = df['Close'].pct_change().mean() * 100
                 price_score = max(-30, min(30, price_change * 10))
                 
-                # Volume momentum
                 volume_change = df['Volume'].pct_change().mean() * 100
                 volume_score = max(-20, min(20, volume_change * 5))
                 
-                # RSI momentum
                 rsi = RSIIndicator(close=df['Close'], window=14).rsi().iloc[-1]
                 if not pd.isna(rsi):
                     if rsi > 70:
@@ -580,7 +538,6 @@ class SignalConfidenceScorer:
             return 0
     
     def update_history(self, symbol: str, result: str):
-        """Update historical accuracy"""
         if symbol not in self.history:
             self.history[symbol] = {'wins': 0, 'losses': 0, 'total': 0}
         
@@ -596,7 +553,6 @@ confidence_scorer = SignalConfidenceScorer()
 
 # ==================== ALERT BATCHER ====================
 class AlertBatcher:
-    """Batch alerts to reduce spam"""
     def __init__(self):
         self.buffer: List[Dict] = []
         self.last_sent = time.time()
@@ -604,27 +560,22 @@ class AlertBatcher:
         self.max_batch_size = 5
         
     def add_alert(self, alert_type: str, data: Dict):
-        """Add alert to buffer"""
         self.buffer.append({
             'type': alert_type,
             'data': data,
             'timestamp': time.time()
         })
         
-        # Send if buffer is full or time exceeded
         if len(self.buffer) >= self.max_batch_size or (time.time() - self.last_sent) > self.batch_interval:
             self.send_batch()
     
     def send_batch(self):
-        """Send batched alerts"""
         if not self.buffer:
             return
         
-        # Separate by type
         signals = [b for b in self.buffer if b['type'] == 'signal']
         news = [b for b in self.buffer if b['type'] == 'news']
         
-        # Send signals batch
         if signals:
             msg = "📦 **SIGNAL BATCH** 📦\n═════════════════════════\n\n"
             for signal in signals:
@@ -637,25 +588,25 @@ class AlertBatcher:
             msg += "═════════════════════════"
             send_telegram_alert(msg)
         
-        # Send news batch
         if news:
             msg = "📰 **NEWS BATCH** 📰\n═════════════════════════\n\n"
             for news_item in news:
                 data = news_item['data']
+                # Skip neutral news
+                if "NEUTRAL" in data['sentiment']:
+                    continue
                 msg += f"{data['sentiment']} <b>#{data['stock']}</b>\n"
                 msg += f"📰 {data['title'][:100]}...\n\n"
-            msg += "═════════════════════════"
-            send_telegram_alert(msg)
+            if len(msg) > 100:  # Only send if there's content
+                msg += "═════════════════════════"
+                send_telegram_alert(msg)
         
-        # Clear buffer
         self.buffer = []
         self.last_sent = time.time()
 
 alert_batcher = AlertBatcher()
 
 # ==================== EXISTING CONFIGURATIONS ====================
-# (Keep all your existing maps and configurations here)
-
 INDICES_MAP = {
     "^NSEI": "NIFTY 50",
     "^NSEBANK": "BANK NIFTY",
@@ -684,38 +635,29 @@ STOCKS_MAP = {
     "TATA MOTORS": "TATAMOTORS.NS", "TATAMOTORS": "TATAMOTORS.NS", "MARUTI": "MARUTI.NS",
     "MAHINDRA": "M&M.NS", "M&M": "M&M.NS", "HERO MOTOCORP": "HEROMOTOCO.NS", "EICHER": "EICHERMOT.NS",
     "TVS MOTOR": "TVSMOTOR.NS", "BAJAJ AUTO": "BAJAJ-AUTO.NS", "BHARAT FORGE": "BHARATFORG.NS",
-    
     "INFOSYS": "INFY.NS", "INFY": "INFY.NS", "TCS": "TCS.NS", "WIPRO": "WIPRO.NS", "TECH MAHINDRA": "TECHM.NS",
     "HCL TECH": "HCLTECH.NS", "LTIMINDTREE": "LTIM.NS", "COFORGE": "COFORGE.NS", "PERSISTENT": "PERSISTENT.NS",
-    
     "HDFC BANK": "HDFCBANK.NS", "HDFCBANK": "HDFCBANK.NS", "ICICI BANK": "ICICIBANK.NS", "ICICIBANK": "ICICIBANK.NS",
     "AXIS BANK": "AXISBANK.NS", "AXISBANK": "AXISBANK.NS", "KOTAK BANK": "KOTAKBANK.NS", "KOTAK": "KOTAKBANK.NS",
     "STATE BANK": "SBIN.NS", "SBI": "SBIN.NS", "SBIN": "SBIN.NS", "BANK OF BARODA": "BANKBARODA.NS",
     "PNB": "PNB.NS", "CANARA BANK": "CANBK.NS", "IDFC FIRST": "IDFCFIRSTB.NS", "FEDERAL BANK": "FEDERALBNK.NS",
-    
     "BAJAJ FINANCE": "BAJFINANCE.NS", "BAJFINANCE": "BAJFINANCE.NS", "BAJAJ FINSERV": "BAJFINSV.NS",
     "JIO FINANCIAL": "JIOFIN.NS", "REC": "RECLTD.NS", "PFC": "PFC.NS", "CHOLAMANDALAM": "CHOLAFIN.NS",
     "MUTHOOT FINANCE": "MUTHOOTFIN.NS", "SHRIRAM FINANCE": "SHRIRAMFIN.NS",
-    
     "RELIANCE": "RELIANCE.NS", "NTPC": "NTPC.NS", "POWER GRID": "POWERGRID.NS", "ONGC": "ONGC.NS",
     "COAL INDIA": "COALINDIA.NS", "ADANI GREEN": "ADANIGREEN.NS", "ADANI POWER": "ADANIPOWER.NS",
     "TATA POWER": "TATAPOWER.NS", "BPCL": "BPCL.NS", "IOC": "IOC.NS", "GAIL": "GAIL.NS", "SUZLON": "SUZLON.NS",
-    
     "TATA STEEL": "TATASTEEL.NS", "HINDALCO": "HINDALCO.NS", "JINDAL STEEL": "JINDALSTEL.NS",
     "JSW STEEL": "JSWSTEEL.NS", "VEDANTA": "VEDL.NS", "NMDC": "NMDC.NS",
-    
     "HAL": "HAL.NS", "HINDUSTAN AERONAUTICS": "HAL.NS", "BEL": "BEL.NS", "MAZAGON": "MAZDOCK.NS",
     "COCHIN SHIPYARD": "COCHINSHIP.NS", "LARSEN": "LT.NS", "L&T": "LT.NS", "SIEMENS": "SIEMENS.NS", "ABB": "ABB.NS",
-    
     "TRENT": "TRENT.NS", "DIXON": "DIXON.NS", "BHARTI AIRTEL": "BHARTIARTL.NS", "AIRTEL": "BHARTIARTL.NS",
     "ITC": "ITC.NS", "TITAN": "TITAN.NS", "ASIAN PAINTS": "ASIANPAINT.NS", "ULTRATECH": "ULTRACEMCO.NS",
     "GRASIM": "GRASIM.NS", "NESTLE": "NESTLEIND.NS", "BRITANNIA": "BRITANNIA.NS", "VARUN BEVERAGES": "VBL.NS",
     "DABUR": "DABUR.NS", "GODREJ CONSUMER": "GODREJCP.NS",
-    
     "ZOMATO": "ZOMATO.NS", "PAYTM": "PAYTM.NS", "POLICYBAZAAR": "POLICYBZR.NS", "DELHIVERY": "DELHIVERY.NS",
     "SUN PHARMA": "SUNPHARMA.NS", "CIPLA": "CIPLA.NS", "DR REDDY": "DRREDDY.NS", "DIVIS LAB": "DIVISLAB.NS",
     "LUPIN": "LUPIN.NS", "APOLLO HOSPITALS": "APOLLOHOSP.NS", "MANKIND": "MANKIND.NS",
-    
     "DLF": "DLF.NS", "LODHA": "LODHA.NS", "GODREJ PROP": "GODREJPROP.NS", "INDIGO": "INDIGO.NS",
     "BSE": "BSE.NS", "ANGEL ONE": "ANGELONE.NS", "CDSL": "CDSL.NS"
 }
@@ -737,31 +679,20 @@ GLOBAL_NEWS_FEEDS = [
 ]
 
 MACRO_KEYWORDS = [
-    # Central Bank & Policy
     "fed", "federal reserve", "fomc", "jerome powell", "interest rate", 
     "rate cut", "rate hike", "repo rate", "reverse repo", "rbi", "mpc", 
     "liquidity", "quantitative easing", "rate pause", "ecb", "boe", "boj",
-    
-    # Economic Data
     "cpi", "core cpi", "ppi", "inflation", "gdp", "pmi", "nfp", "nonfarm payroll", 
     "unemployment", "retail sales", "consumer confidence", "recession", 
     "soft landing", "hard landing", "fiscal deficit", "current account deficit",
-
-    # Currency, Bonds & Forex
     "dxy", "dollar index", "usdinr", "treasury yield", "bond yield", 
     "fii inflow", "fii outflow", "dii buying", "forex reserves", "gst collection", 
     "union budget", "capex",
-
-    # Commodities & Energy
     "brent crude", "crude oil", "opec", "opec plus", "natural gas", 
     "gold price", "silver price", "copper", "lng", "metals",
-
-    # Geopolitics & Trade
     "war", "missile", "tariff", "tsunami", "flood", "geopolitical", 
     "sanctions", "trade war", "export duty", "import duty", "embargo", 
     "supply chain", "blockade",
-
-    # Regulatory
     "sebi", "f&o ban", "circuit breaker", "block deal", "bulk deal"
 ]
 
@@ -826,9 +757,12 @@ def send_telegram_photo(image_bytes, caption=""):
         logger.error(f"Telegram Photo API Error: {e}")
         monitor.record_api_error()
 
-# ==================== EXISTING HELPER FUNCTIONS ====================
+# ==================== HELPER FUNCTIONS ====================
+def is_cloud_platform() -> bool:
+    """Check if running on cloud platform (Render/Railway)"""
+    return bool(os.environ.get('RENDER') or os.environ.get('RAILWAY') or os.environ.get('RENDER_GIT_COMMIT'))
+
 def generate_chart_image(symbol, display_name):
-    """Generate chart image for signal"""
     with SuppressStdout():
         try:
             ticker = yf.Ticker(symbol)
@@ -891,18 +825,8 @@ def is_market_hours():
     end = now.replace(hour=15, minute=30, second=0, microsecond=0)
     return start <= now <= end
 
-def get_adaptive_interval(symbol: str) -> int:
-    """Get adaptive scan interval based on priority"""
-    if symbol in config.HIGH_PRIORITY_STOCKS:
-        return config.HIGH_PRIORITY_INTERVAL
-    elif symbol in config.MEDIUM_PRIORITY_STOCKS:
-        return config.MEDIUM_PRIORITY_INTERVAL
-    return config.LOW_PRIORITY_INTERVAL
-
 @retry_on_failure(max_retries=2, delay=1)
-def get_accurate_price_improved(symbol: str) -> float:
-    """Get accurate price with smart caching"""
-    # Check cache first
+def get_accurate_price(symbol: str) -> float:
     cached_price = price_cache.get(symbol)
     if cached_price:
         return cached_price
@@ -924,10 +848,6 @@ def get_accurate_price_improved(symbol: str) -> float:
             logger.debug(f"Price fetch error for {symbol}: {e}")
             monitor.record_api_error()
     return 0.0
-
-def get_accurate_price(symbol: str) -> float:
-    """Wrapper for get_accurate_price_improved"""
-    return get_accurate_price_improved(symbol)
 
 def fetch_macro_indicators():
     results = {}
@@ -953,7 +873,6 @@ def calculate_strike_price(index_name, current_price, option_type="CE"):
     return f"{atm_strike} {option_type}"
 
 def analyze_sentiment(title):
-    """Enhanced sentiment analysis using SmartSentimentAnalyzer"""
     sentiment, score, confidence = sentiment_analyzer.analyze(title)
     return sentiment, score
 
@@ -990,18 +909,18 @@ def fetch_clickable_global_news_list():
                     link = item.link.text.strip() if item.link else ""
                     if title and link:
                         sent, _ = analyze_sentiment(title)
-                        news_items.append({
-                            "title": title,
-                            "link": link,
-                            "sentiment": sent
-                        })
+                        if "NEUTRAL" not in sent:
+                            news_items.append({
+                                "title": title,
+                                "link": link,
+                                "sentiment": sent
+                            })
         except Exception:
             pass
     return news_items[:5]
 
-# ==================== UPDATED TRADE FUNCTIONS ====================
+# ==================== TRADE FUNCTIONS ====================
 def update_and_check_trade_outcomes():
-    """Update trade outcomes with performance tracking"""
     global ACTIVE_MONITORED_TRADES, TRADE_STATS
     if not is_market_hours() or not ACTIVE_MONITORED_TRADES:
         return
@@ -1030,7 +949,6 @@ def update_and_check_trade_outcomes():
         if target_hit:
             TRADE_STATS["target_hit"] += 1
             monitor.record_trade_result('WIN')
-            # Update confidence scorer
             confidence_scorer.update_history(trade["symbol"], 'WIN')
         elif sl_hit:
             TRADE_STATS["sl_hit"] += 1
@@ -1055,14 +973,12 @@ def get_win_rate_summary_text():
         f"• Win Rate Accuracy: <b>{win_rate:.1f}%</b> 🎯\n"
     )
 
-# ==================== UPDATED SIGNAL FUNCTION ====================
-def check_3min_plus_signal_improved(symbol: str, display_name: str, is_index: bool = False) -> Optional[SignalData]:
-    """Improved signal detection with confidence scoring"""
+# ==================== SIGNAL FUNCTION ====================
+def check_3min_plus_signal(symbol: str, display_name: str, is_index: bool = False) -> Optional[SignalData]:
     global last_signal_state, last_alert_candle_time
     
     with SuppressStdout():
         try:
-            # Get data with caching
             current_close = get_accurate_price(symbol)
             if current_close == 0.0:
                 return None
@@ -1075,20 +991,17 @@ def check_3min_plus_signal_improved(symbol: str, display_name: str, is_index: bo
             if df.empty or len(df) < 5:
                 return None
             
-            # Convert to float
             df["Close"] = df["Close"].values.flatten().astype(float)
             df["High"] = df["High"].values.flatten().astype(float)
             df["Low"] = df["Low"].values.flatten().astype(float)
             df["Volume"] = df["Volume"].values.flatten().astype(float)
             
-            # Calculate indicators
             df["EMA_9"] = EMAIndicator(close=df["Close"], window=9).ema_indicator()
             df["EMA_26"] = EMAIndicator(close=df["Close"], window=26).ema_indicator()
             df["ATR_14"] = AverageTrueRange(high=df["High"], low=df["Low"], close=df["Close"], window=14).average_true_range()
             df["RSI_14"] = RSIIndicator(close=df["Close"], window=14).rsi()
             df["Vol_SMA"] = df["Volume"].rolling(window=20).mean()
             
-            # Calculate VWAP
             tp = (df["High"] + df["Low"] + df["Close"]) / 3
             df["VWAP"] = (tp * df["Volume"]).cumsum() / df["Volume"].cumsum()
             current_vwap = round(float(df["VWAP"].iloc[-1]), 2) if not df["VWAP"].empty else float(df["Close"].iloc[-1])
@@ -1111,7 +1024,6 @@ def check_3min_plus_signal_improved(symbol: str, display_name: str, is_index: bo
             
             vol_ratio = (current_vol / vol_sma) if vol_sma > 0 else 1.0
             
-            # Volume warning
             warning_note = ""
             if vol_ratio < 1.0 and not is_index:
                 warning_note = "⚠️ Volume is low (<1.0x SMA)"
@@ -1120,7 +1032,6 @@ def check_3min_plus_signal_improved(symbol: str, display_name: str, is_index: bo
             else:
                 warning_note = "✅ Volume Normal"
             
-            # Check crossover
             now_ema9 = float(row_now["EMA_9"])
             now_ema26 = float(row_now["EMA_26"])
             prev_ema9 = float(row_prev["EMA_9"])
@@ -1147,7 +1058,6 @@ def check_3min_plus_signal_improved(symbol: str, display_name: str, is_index: bo
                     action = "BUY / CALL (CE)" if current_direction == "BULLISH" else "BUY / PUT (PE)"
                     opt_type = "CE" if current_direction == "BULLISH" else "PE"
                     
-                    # Calculate risk management
                     if current_direction == "BULLISH":
                         stop_loss = current_close - (atr_val * 1.5)
                         target = current_close + ((current_close - stop_loss) * 1.5)
@@ -1160,7 +1070,6 @@ def check_3min_plus_signal_improved(symbol: str, display_name: str, is_index: bo
                     
                     suggested_strike = calculate_strike_price(display_name, current_close, opt_type) if is_index else "N/A"
                     
-                    # Create signal data
                     signal_data = SignalData(
                         name=display_name,
                         symbol=symbol,
@@ -1179,25 +1088,21 @@ def check_3min_plus_signal_improved(symbol: str, display_name: str, is_index: bo
                         supertrend_info=supertrend_info,
                         risk_per_share=risk_per_share,
                         recommended_qty=recommended_qty,
-                        confidence=0,  # Will be calculated
-                        momentum_score=0  # Will be calculated
+                        confidence=0,
+                        momentum_score=0
                     )
                     
-                    # Calculate confidence and momentum
                     confidence = confidence_scorer.calculate_confidence(signal_data)
                     momentum = confidence_scorer.calculate_momentum(symbol)
                     
-                    # Update signal with scores
                     signal_data.confidence = confidence
                     signal_data.momentum_score = momentum
                     
-                    # Convert to dict for existing code
                     sig_dict = asdict(signal_data)
                     
                     day_plus_signals_log.append(sig_dict)
                     TRADE_STATS["total_signals"] += 1
                     
-                    # Determine priority for monitoring
                     priority = 'high' if symbol in config.HIGH_PRIORITY_STOCKS else 'medium' if symbol in config.MEDIUM_PRIORITY_STOCKS else 'low'
                     
                     ACTIVE_MONITORED_TRADES.append({
@@ -1219,9 +1124,8 @@ def check_3min_plus_signal_improved(symbol: str, display_name: str, is_index: bo
     
     return None
 
-# ==================== UPDATED NEWS FUNCTIONS ====================
+# ==================== NEWS FUNCTIONS ====================
 def process_rss_items(soup, max_items: int = 20, age_limit: int = 3600) -> List[Dict]:
-    """Process RSS items with quality filtering"""
     items = soup.find_all("item")
     if not items:
         soup = BeautifulSoup(str(soup), "html.parser")
@@ -1241,13 +1145,11 @@ def process_rss_items(soup, max_items: int = 20, age_limit: int = 3600) -> List[
                 
             pub_time = parse_exact_pub_date(pub_date_raw)
             
-            # Check age limit
             if (now_ist - pub_time).total_seconds() > age_limit:
                 continue
             
-            # Quality check
             quality = news_filter.get_quality_score(link, title)
-            if quality < 6:  # Skip low quality news
+            if quality < 6:
                 continue
                 
             processed_items.append({
@@ -1263,8 +1165,7 @@ def process_rss_items(soup, max_items: int = 20, age_limit: int = 3600) -> List[
             
     return processed_items
 
-def check_macro_and_global_news_improved():
-    """Improved macro news with quality filtering"""
+def check_macro_and_global_news():
     global seen_macro_news_titles
     all_feeds = INDIAN_NEWS_FEEDS + GLOBAL_NEWS_FEEDS
     now_ist = datetime.now(IST)
@@ -1299,6 +1200,7 @@ def check_macro_and_global_news_improved():
                     seen_macro_news_titles.add(norm_title)
                     sentiment, _ = analyze_sentiment(title)
                     
+                    # Skip neutral news
                     if "NEUTRAL" in sentiment:
                         continue
                     
@@ -1319,7 +1221,6 @@ def check_macro_and_global_news_improved():
         send_macro_news_batch_alert(batch_news_items, now_ist)
 
 def send_macro_news_batch_alert(batch_news_items: List[Dict], now_ist: datetime):
-    """Send batched macro news alerts"""
     msg = (
         f"🚨 <b>[24*7 MACRO & GLOBAL NEWS ALERT]</b> 🚨\n"
         f"📅 <i>{now_ist.strftime(config.DATETIME_FORMAT)}</i>\n"
@@ -1337,9 +1238,7 @@ def send_macro_news_batch_alert(batch_news_items: List[Dict], now_ist: datetime)
     )
     send_telegram_alert(msg)
 
-# ==================== UPDATED SIGNAL ALERT ====================
 def send_instant_plus_signal_alert(sig_dict):
-    """Send signal alert with confidence and momentum scores"""
     now_str = datetime.now(IST).strftime(config.DATETIME_FORMAT)
     
     matched_news = [n for n in day_news_log if n['stock'] == sig_dict['name']]
@@ -1353,11 +1252,9 @@ def send_instant_plus_signal_alert(sig_dict):
 
     win_rate_summary = get_win_rate_summary_text()
     
-    # Get confidence and momentum
     confidence = sig_dict.get('confidence', 0)
     momentum = sig_dict.get('momentum_score', 0)
     
-    # Determine emoji based on confidence
     if confidence >= 70:
         confidence_emoji = "🚀 HIGH"
     elif confidence >= 50:
@@ -1365,7 +1262,6 @@ def send_instant_plus_signal_alert(sig_dict):
     else:
         confidence_emoji = "⚠️ LOW"
     
-    # Momentum direction
     momentum_emoji = "🟢" if momentum > 0 else "🔴" if momentum < 0 else "⚪"
     momentum_text = f"{momentum_emoji} {abs(momentum)}%" if momentum != 0 else "NEUTRAL"
 
@@ -1416,9 +1312,7 @@ def send_instant_plus_signal_alert(sig_dict):
         caption = f"📊 <b>{sig_dict['name']}</b> ({sig_dict['sentiment']})\n⚡ <b>Action:</b> {sig_dict['action']} | 💰 <b>Price:</b> ₹{sig_dict['price']:,.2f}\n🛑 <b>SL:</b> ₹{sig_dict['sl']:,.2f} | 🎯 <b>Target:</b> ₹{sig_dict['target']:,.2f}\n📊 Confidence: {sig_dict.get('confidence', 0)}%"
         send_telegram_photo(chart_img, caption=caption)
 
-# ==================== FETCH & COLLECT STOCK NEWS ====================
 def fetch_and_collect_stock_news():
-    """Fetch and collect stock news with quality filtering"""
     global seen_news_titles, news_watched_stocks, day_news_log, stock_sentiment_counts, stock_latest_news_time, last_news_alert_time
 
     now_ist = datetime.now(IST)
@@ -1458,6 +1352,7 @@ def fetch_and_collect_stock_news():
 
                         sentiment, score = analyze_sentiment(title)
 
+                        # Skip neutral news
                         if "NEUTRAL" not in sentiment:
                             stock_latest_news_time[yf_symbol] = pub_time
                             price = get_accurate_price(yf_symbol)
@@ -1554,7 +1449,7 @@ def send_910_am_table_report():
                 continue
                 
             soup = BeautifulSoup(resp.content, "xml")
-            items = process_rss_items(soup, max_items=30, age_limit=86400)  # 24 hours
+            items = process_rss_items(soup, max_items=30, age_limit=86400)
 
             for item in items:
                 title = item['title']
@@ -1622,7 +1517,7 @@ def send_330_pm_closing_summary():
 
     msg += f"🔥 <b>TODAY'S EMA CROSSOVER (+) SIGNALS ({len(day_plus_signals_log)}):</b>\n"
     if day_plus_signals_log:
-        for sig in day_plus_signals_log[-10:]:  # Show last 10
+        for sig in day_plus_signals_log[-10:]:
             confidence = sig.get('confidence', 0)
             msg += f"• <b>#{sig['name']}</b> ({sig['time']}) -> {sig['sentiment']}\n"
             msg += f"  Price: ₹{sig['price']:,.2f} | Confidence: {confidence}%\n"
@@ -1634,7 +1529,6 @@ def send_330_pm_closing_summary():
 
     send_telegram_alert(msg)
 
-    # Clear data
     day_news_log.clear()
     day_plus_signals_log.clear()
     stock_sentiment_counts.clear()
@@ -1649,8 +1543,7 @@ def send_330_pm_closing_summary():
     price_cache.clear()
 
 # ==================== MAIN SCAN FUNCTION ====================
-def scan_and_alert_improved():
-    """Main scan function with all improvements"""
+def scan_and_alert():
     global last_sent_845_date, last_sent_910_date, last_sent_330_date
     
     scan_start = time.time()
@@ -1660,7 +1553,6 @@ def scan_and_alert_improved():
         current_time = now_ist.strftime("%H:%M")
         today_date = now_ist.strftime("%Y-%m-%d")
         
-        # Scheduled reports
         if current_time == "08:45" and last_sent_845_date != today_date:
             send_845_am_premarket_report()
             last_sent_845_date = today_date
@@ -1676,31 +1568,25 @@ def scan_and_alert_improved():
             last_sent_330_date = today_date
             logger.info("Sent 3:30 PM closing summary")
         
-        # Check news
-        check_macro_and_global_news_improved()
+        check_macro_and_global_news()
         fetch_and_collect_stock_news()
         update_and_check_trade_outcomes()
         
-        # Scan signals during market hours
         if is_market_hours():
             scan_dict = {}
             
-            # Add indices
             for index_sym, index_name in INDICES_MAP.items():
                 scan_dict[index_sym] = (index_sym, index_name, True)
             
-            # Add core stocks
             for s_name, s_sym in CORE_STOCKS_MAP.items():
                 scan_dict[s_sym] = (s_sym, s_name, False)
             
-            # Add news-watched stocks
             for s_name, s_sym in list(news_watched_stocks):
                 if s_sym not in scan_dict:
                     scan_dict[s_sym] = (s_sym, s_name, False)
             
             scan_items = list(scan_dict.values())
             
-            # Group by priority
             high_priority = []
             medium_priority = []
             low_priority = []
@@ -1714,32 +1600,27 @@ def scan_and_alert_improved():
                 else:
                     low_priority.append(item)
             
-            # Scan high priority first
             executor = pool_manager.get_executor()
             
-            # High priority - all at once
             futures = []
             for item in high_priority:
-                future = executor.submit(_scan_single_item_improved, item)
+                future = executor.submit(_scan_single_item, item)
                 futures.append(future)
             
-            # Medium priority - half at a time
             for i in range(0, len(medium_priority), 5):
                 batch = medium_priority[i:i+5]
                 for item in batch:
-                    future = executor.submit(_scan_single_item_improved, item)
+                    future = executor.submit(_scan_single_item, item)
                     futures.append(future)
-                time.sleep(0.5)  # Small delay between batches
+                time.sleep(0.5)
             
-            # Low priority - spread out
             for i in range(0, len(low_priority), 10):
                 batch = low_priority[i:i+10]
                 for item in batch:
-                    future = executor.submit(_scan_single_item_improved, item)
+                    future = executor.submit(_scan_single_item, item)
                     futures.append(future)
-                time.sleep(1)  # Longer delay for low priority
+                time.sleep(1)
             
-            # Wait for all to complete with timeout
             for future in futures:
                 try:
                     future.result(timeout=3)
@@ -1750,34 +1631,36 @@ def scan_and_alert_improved():
         logger.error(f"Scan error: {e}")
         monitor.record_api_error()
     
-    # Record performance
     scan_duration = time.time() - scan_start
     monitor.record_scan(scan_duration)
     
-    # Log performance periodically
     if monitor.metrics['scans'] % 10 == 0:
         logger.info(f"Performance: {monitor.get_status_report()}")
 
-def _scan_single_item_improved(item):
-    """Single item scanner with improved error handling"""
+def _scan_single_item(item):
     sym, name, is_idx = item
     try:
-        sig = check_3min_plus_signal_improved(sym, name, is_index=is_idx)
+        sig = check_3min_plus_signal(sym, name, is_index=is_idx)
         if sig:
-            # Send alert (batched or direct)
             sig_dict = asdict(sig)
             send_instant_plus_signal_alert(sig_dict)
     except Exception as e:
         logger.error(f"Error scanning {name}: {e}")
 
-# ==================== GRACEFUL SHUTDOWN ====================
+# ==================== GRACEFUL SHUTDOWN - FIXED ====================
 def signal_handler(sig, frame):
-    """Handle shutdown signals gracefully"""
+    """Handle shutdown signals gracefully - NO ALERT on cloud"""
     logger.info("🛑 Received shutdown signal. Cleaning up...")
-    try:
-        send_telegram_alert("🛑 Radar Engine shutting down gracefully")
-    except:
-        pass
+    
+    # Check if running on cloud platform
+    if not is_cloud_platform():
+        try:
+            send_telegram_alert("🛑 Radar Engine shutting down gracefully")
+        except:
+            pass
+    else:
+        logger.info("Cloud platform detected - silent shutdown (no alert)")
+    
     pool_manager.shutdown()
     logger.info("Cleanup complete. Exiting...")
     sys.exit(0)
@@ -1788,7 +1671,6 @@ signal.signal(signal.SIGTERM, signal_handler)
 
 # ==================== HEALTH CHECK ====================
 def check_internet_connection() -> bool:
-    """Check if internet is available"""
     try:
         requests.get("https://www.google.com", timeout=5)
         return True
@@ -1796,22 +1678,22 @@ def check_internet_connection() -> bool:
         return False
 
 def run_health_check():
-    """Run periodic health checks"""
     while True:
         try:
             if not check_internet_connection():
                 logger.warning("No internet connection detected")
-                send_telegram_alert("⚠️ No internet connection detected!")
+                if not is_cloud_platform():
+                    send_telegram_alert("⚠️ No internet connection detected!")
             
-            # Send periodic status
             if monitor.metrics['scans'] % 100 == 0 and monitor.metrics['scans'] > 0:
                 status_msg = monitor.get_status_report()
-                send_telegram_alert(status_msg)
+                if not is_cloud_platform():
+                    send_telegram_alert(status_msg)
                 
         except Exception as e:
             logger.error(f"Health check error: {e}")
         
-        time.sleep(3600)  # Every hour
+        time.sleep(3600)
 
 # ==================== FLASK SERVER ====================
 flask_app = Flask("")
@@ -1837,7 +1719,6 @@ def metrics():
 
 @flask_app.route("/signals")
 def signals():
-    """Show recent signals"""
     signals_list = []
     for sig in day_plus_signals_log[-20:]:
         signals_list.append({
@@ -1857,43 +1738,54 @@ def run_server():
 if __name__ == "__main__":
     logger.info("🚀 Starting Shambhu's Radar Engine...")
     
-    # Start Flask server in background
+    # Detect platform
+    if is_cloud_platform():
+        logger.info("☁️ Running on Cloud Platform (Render/Railway)")
+    else:
+        logger.info("💻 Running on Local Machine")
+    
+    # Start Flask server
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
     
-    # Start health check in background
+    # Start health check
     health_thread = threading.Thread(target=run_health_check, daemon=True)
     health_thread.start()
     
-    # Send startup alert
-    try:
-        startup_msg = (
-            "🚀 <b>Radar Engine Active!</b>\n\n"
-            "📊 EMA Crossover & 24*7 Macro News Alerts Enabled\n"
-            "⚡ Performance Monitoring Active\n"
-            "🛡️ Auto-Restart Enabled\n"
-            "📈 Confidence Scoring Active\n"
-            "🎯 Priority-Based Scanning Active\n"
-            "📰 Smart News Filtering Active"
-        )
-        send_telegram_alert(startup_msg)
-        logger.info("Startup alert sent to Telegram")
-    except Exception as e:
-        logger.error(f"Startup alert error: {e}")
+    # Send startup alert (only on local)
+    if not is_cloud_platform():
+        try:
+            startup_msg = (
+                "🚀 <b>Radar Engine Active!</b>\n\n"
+                "📊 EMA Crossover & 24*7 Macro News Alerts Enabled\n"
+                "⚡ Performance Monitoring Active\n"
+                "🛡️ Auto-Restart Enabled\n"
+                "📈 Confidence Scoring Active\n"
+                "🎯 Priority-Based Scanning Active\n"
+                "📰 Smart News Filtering Active\n"
+                "❌ NEUTRAL News Alerts Disabled"
+            )
+            send_telegram_alert(startup_msg)
+            logger.info("Startup alert sent to Telegram")
+        except Exception as e:
+            logger.error(f"Startup alert error: {e}")
+    else:
+        logger.info("Cloud platform - skipping startup alert (to avoid spam)")
     
-    # Main loop
+    # Main loop with auto-restart
     while True:
         try:
             time.sleep(config.CHECK_INTERVAL)
-            scan_and_alert_improved()
+            scan_and_alert()
         except KeyboardInterrupt:
             logger.info("Received keyboard interrupt, shutting down...")
             break
         except Exception as e:
             logger.critical(f"Main Loop Critical Error: {e}")
-            try:
-                send_telegram_alert(f"⚠️ System Restarting due to critical error: {str(e)[:100]}")
-            except:
-                pass
+            if not is_cloud_platform():
+                try:
+                    send_telegram_alert(f"⚠️ System Restarting due to critical error: {str(e)[:100]}")
+                except:
+                    pass
             time.sleep(10)
             continue
