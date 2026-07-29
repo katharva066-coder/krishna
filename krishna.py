@@ -148,14 +148,34 @@ GLOBAL_NEWS_FEEDS = [
 ]
 
 # 🔒 24*7 Macro News Keywords List (Whole-word safe)
+# 🔒 24*7 Macro & Global News Keywords List (Expanded & Whole-word safe)
 MACRO_KEYWORDS = [
+    # सेंट्रल बँक आणि मॉनिटरी पॉलिसी
     "fed", "federal reserve", "fomc", "jerome powell", "interest rate", 
-    "rate cut", "rate hike", "repo rate", "rbi", "mpc", "cpi", "core cpi", 
-    "ppi", "inflation", "gdp", "pmi", "nfp", "nonfarm payroll", "unemployment", 
-    "retail sales", "consumer confidence", "recession", "soft landing", "hard landing", 
-    "dxy", "dollar index", "usdinr", "treasury yield", "brent crude", "crude oil", 
-    "war", "missile", "tariff", "tsunami", "flood", "geopolitical", "opec", 
-    "bond yield", "fiscal deficit"
+    "rate cut", "rate hike", "repo rate", "reverse repo", "rbi", "mpc", 
+    "liquidity", "quantitative easing", "rate pause", "ecb", "boe", "boj",
+    
+    # इन्फ्लेशन आणि इकॉनॉमिक डेटा
+    "cpi", "core cpi", "ppi", "inflation", "gdp", "pmi", "nfp", "nonfarm payroll", 
+    "unemployment", "retail sales", "consumer confidence", "recession", 
+    "soft landing", "hard landing", "fiscal deficit", "current account deficit",
+
+    #करन्सी, बाँड्स आणि फॉरेक्स फ्लो
+    "dxy", "dollar index", "usdinr", "treasury yield", "bond yield", 
+    "fii inflow", "fii outflow", "dii buying", "forex reserves", "gst collection", 
+    "union budget", "capex",
+
+    # कमोडिटी आणि एनर्जी
+    "brent crude", "crude oil", "opec", "opec plus", "natural gas", 
+    "gold price", "silver price", "copper", "lng", "metals",
+
+    # जिओपोलिटिक्स आणि ट्रेड
+    "war", "missile", "tariff", "tsunami", "flood", "geopolitical", 
+    "sanctions", "trade war", "export duty", "import duty", "embargo", 
+    "supply chain", "blockade",
+
+    # रेग्युलेटरी आणि मार्केट पॉलिसी
+    "sebi", "f&o ban", "circuit breaker", "block deal", "bulk deal"
 ]
 
 # 🔒 थ्रेड सेफ्टीसाठी लॉक सिस्टम
