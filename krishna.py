@@ -403,13 +403,17 @@ class SmartSentimentAnalyzer:
             "beats estimates", "above expectations", "record high", "all-time high",
             "strong demand", "positive outlook", "outperform", "buy rating",
             "upgrade", "target raised", "strong growth", "robust earnings",
-            "dividend", "bonus", "stock split", "surges", "jumps", "soars"
+            "dividend", "bonus", "stock split", "surges", "jumps", "soars",
+            "bull run", "breakout", "upside", "momentum", "rally",
+            "strong earnings", "record", "milestone", "breakthrough"
         ]
         self.bearish_phrases = [
             "misses estimates", "below expectations", "record low", "all-time low",
             "weak demand", "negative outlook", "underperform", "sell rating",
             "downgrade", "target cut", "slow growth", "weak earnings",
-            "default", "fraud", "investigation", "plunges", "drops", "crashes"
+            "default", "fraud", "investigation", "plunges", "drops", "crashes",
+            "bear market", "collapse", "freefall", "meltdown", "selloff",
+            "panic", "bloodbath", "correction", "downtrend", "weakness"
         ]
         self.modifiers = {
             "not": -1, "no": -1, "never": -1,
@@ -592,12 +596,11 @@ class AlertBatcher:
             msg = "📰 **NEWS BATCH** 📰\n═════════════════════════\n\n"
             for news_item in news:
                 data = news_item['data']
-                # Skip neutral news
                 if "NEUTRAL" in data['sentiment']:
                     continue
                 msg += f"{data['sentiment']} <b>#{data['stock']}</b>\n"
                 msg += f"📰 {data['title'][:100]}...\n\n"
-            if len(msg) > 100:  # Only send if there's content
+            if len(msg) > 100:
                 msg += "═════════════════════════"
                 send_telegram_alert(msg)
         
@@ -678,22 +681,115 @@ GLOBAL_NEWS_FEEDS = [
     "https://www.investing.com/rss/news.rss"
 ]
 
+# ==================== 🆕 UPDATED MACRO_KEYWORDS WITH STRONG SENTIMENT ====================
 MACRO_KEYWORDS = [
+    # === CENTRAL BANK & POLICY ===
     "fed", "federal reserve", "fomc", "jerome powell", "interest rate", 
     "rate cut", "rate hike", "repo rate", "reverse repo", "rbi", "mpc", 
     "liquidity", "quantitative easing", "rate pause", "ecb", "boe", "boj",
+    "fomc meeting", "fed meeting", "fed decision", "fed announcement",
+    "rate decision", "policy announcement", "press conference",
+    "powell speech", "testimony", "congress hearing",
+    
+    # === ECONOMIC DATA ===
     "cpi", "core cpi", "ppi", "inflation", "gdp", "pmi", "nfp", "nonfarm payroll", 
     "unemployment", "retail sales", "consumer confidence", "recession", 
     "soft landing", "hard landing", "fiscal deficit", "current account deficit",
-    "dxy", "dollar index", "usdinr", "treasury yield", "bond yield", 
+    "industrial production", "factory orders", "durable goods", "housing starts",
+    "jobless claims", "initial claims", "continuing claims", "trade balance",
+    "wholesale inflation", "producer price index", "consumer price index",
+    "gross domestic product", "purchasing managers index", "services pmi",
+    "manufacturing pmi", "adp employment", "consumer spending", "personal income",
+    
+    # === CURRENCY & BONDS ===
+    "dxy", "dollar index", "usdinr", "treasury yield", "bond yield", "10-year yield",
     "fii inflow", "fii outflow", "dii buying", "forex reserves", "gst collection", 
-    "union budget", "capex",
-    "brent crude", "crude oil", "opec", "opec plus", "natural gas", 
-    "gold price", "silver price", "copper", "lng", "metals",
+    "union budget", "capex", "currency market", "exchange rate", "rupee", "dollar",
+    "euro", "pound", "yen", "yuan", "foreign exchange",
+    
+    # === COMMODITIES & ENERGY ===
+    "brent crude", "crude oil", "wti crude", "opec", "opec plus", "natural gas", 
+    "gold price", "silver price", "copper", "lng", "metals", "oil price",
+    "energy prices", "commodity market", "precious metals", "base metals",
+    "gold", "silver", "platinum", "palladium", "oil inventory", "rig count",
+    "petroleum", "gasoline", "heating oil", "coal", "iron ore", "steel prices",
+    
+    # === GEOPOLITICS & TRADE ===
     "war", "missile", "tariff", "tsunami", "flood", "geopolitical", 
     "sanctions", "trade war", "export duty", "import duty", "embargo", 
-    "supply chain", "blockade",
-    "sebi", "f&o ban", "circuit breaker", "block deal", "bulk deal"
+    "supply chain", "blockade", "conflict", "border tension", "trade deal",
+    "trade agreement", "wto", "world trade organization", "import ban",
+    "export ban", "geopolitical tension", "military", "defense", "china",
+    "russia", "ukraine", "middle east", "iran", "israel", "gaza",
+    "ceasefire", "peace agreement",
+    
+    # === REGULATORY ===
+    "sebi", "f&o ban", "circuit breaker", "block deal", "bulk deal",
+    "market regulator", "financial regulation", "margin requirement",
+    "security exchange", "stock market regulation", "corporate governance",
+    "audit", "compliance", "legal action", "investigation", "sebi order",
+    "stock exchange", "nse", "bse", "trading halt", "market intervention",
+    
+    # === 🆕 STRONG BULLISH SENTIMENT ===
+    "bull run", "record high", "all-time high", "new high", "breakout",
+    "upside", "momentum", "rally", "surge", "soar", "jump", "spike",
+    "outperform", "beat estimates", "strong growth", "robust demand",
+    "positive outlook", "upgrade", "target raised", "strong earnings",
+    "rocket", "skyrocket", "explode", "moon", "parabolic",
+    "breakthrough", "milestone", "landmark", "historic",
+    
+    # === 🆕 STRONG BEARISH SENTIMENT ===
+    "bear market", "crash", "plunge", "collapse", "freefall", "meltdown",
+    "selloff", "panic selling", "bloodbath", "correction", "downtrend",
+    "downside", "weakness", "slump", "drop", "fall", "decline",
+    "underperform", "miss estimates", "weak demand", "negative outlook",
+    "downgrade", "target cut", "weak earnings", "loss", "default",
+    "tank", "nosedive", "freefall", "annihilate", "wipeout",
+    "scandal", "fraud", "probe", "lawsuit",
+    
+    # === 🆕 CRISIS & EMERGENCY ===
+    "emergency", "crisis", "critical", "urgent", "warning", "alert",
+    "bankruptcy", "insolvency", "liquidity crisis", "bank run",
+    "systemic risk", "contagion", "default risk", "credit crunch",
+    "banking crisis", "bank failure", "deposit", "withdrawal",
+    "npa", "bad loans", "provision", "capital adequacy",
+    "flash crash", "black swan", "force majeure", "act of god",
+    "natural disaster", "earthquake", "cyclone", "hurricane",
+    "pandemic", "outbreak", "lockdown", "shutdown", "curfew",
+    
+    # === 🆕 MARKET MOVING EVENTS ===
+    "g20", "g7", "imf", "world bank", "summit",
+    "presidential election", "election results", "political crisis",
+    "politics", "government", "cabinet", "minister", "prime minister",
+    
+    # === 🆕 INDICES & MARKETS ===
+    "nifty", "sensex", "dow jones", "s&p 500", "nasdaq",
+    "nikkei", "hang seng", "dax", "ftse", "cac",
+    "brics", "emerging economy", "developing markets", "frontier markets",
+    "wall street", "nyse", "london market", "european stocks",
+    "asian markets", "china market", "japan market", "hong kong market",
+    
+    # === 🆕 CRYPTO & DIGITAL ===
+    "bitcoin", "ethereum", "crypto", "blockchain", "digital currency",
+    "stablecoin", "regulation", "sec", "cftc", "crypto crash",
+    "cryptocurrency", "web3", "metaverse", "quantum computing",
+    
+    # === 🆕 SECTOR SPECIFIC ===
+    "semiconductor", "chip shortage", "supply chain disruption",
+    "manufacturing", "industrial production", "factory orders",
+    "housing", "real estate", "construction", "infrastructure",
+    "renewable", "solar", "wind", "green energy", "power generation",
+    "electricity", "ev", "electric vehicle", "automobile", "auto sales",
+    "pharma", "drug approval", "fda", "clinical trials", "generic drugs",
+    "patent", "vaccine", "medicine", "healthcare",
+    "it", "software", "hardware", "cloud", "ai", "artificial intelligence",
+    "digital", "cybersecurity", "data center", "it services", "bpm",
+    
+    # === 🆕 HIGH IMPACT WORDS ===
+    "shocking", "unexpected", "surprise", "stunning", "dramatic",
+    "historic", "landmark", "milestone", "breakthrough",
+    "massive", "huge", "significant", "major", "critical",
+    "immediate", "urgent", "emergency", "warning",
 ]
 
 # ==================== GLOBAL STATE ====================
@@ -1200,7 +1296,6 @@ def check_macro_and_global_news():
                     seen_macro_news_titles.add(norm_title)
                     sentiment, _ = analyze_sentiment(title)
                     
-                    # Skip neutral news
                     if "NEUTRAL" in sentiment:
                         continue
                     
@@ -1352,7 +1447,6 @@ def fetch_and_collect_stock_news():
 
                         sentiment, score = analyze_sentiment(title)
 
-                        # Skip neutral news
                         if "NEUTRAL" not in sentiment:
                             stock_latest_news_time[yf_symbol] = pub_time
                             price = get_accurate_price(yf_symbol)
@@ -1652,7 +1746,6 @@ def signal_handler(sig, frame):
     """Handle shutdown signals gracefully - NO ALERT on cloud"""
     logger.info("🛑 Received shutdown signal. Cleaning up...")
     
-    # Check if running on cloud platform
     if not is_cloud_platform():
         try:
             send_telegram_alert("🛑 Radar Engine shutting down gracefully")
@@ -1738,21 +1831,17 @@ def run_server():
 if __name__ == "__main__":
     logger.info("🚀 Starting Shambhu's Radar Engine...")
     
-    # Detect platform
     if is_cloud_platform():
         logger.info("☁️ Running on Cloud Platform (Render/Railway)")
     else:
         logger.info("💻 Running on Local Machine")
     
-    # Start Flask server
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
     
-    # Start health check
     health_thread = threading.Thread(target=run_health_check, daemon=True)
     health_thread.start()
     
-    # Send startup alert (only on local)
     if not is_cloud_platform():
         try:
             startup_msg = (
@@ -1763,7 +1852,8 @@ if __name__ == "__main__":
                 "📈 Confidence Scoring Active\n"
                 "🎯 Priority-Based Scanning Active\n"
                 "📰 Smart News Filtering Active\n"
-                "❌ NEUTRAL News Alerts Disabled"
+                "❌ NEUTRAL News Alerts Disabled\n"
+                "🔥 STRONG SENTIMENT KEYWORDS ADDED"
             )
             send_telegram_alert(startup_msg)
             logger.info("Startup alert sent to Telegram")
@@ -1772,7 +1862,6 @@ if __name__ == "__main__":
     else:
         logger.info("Cloud platform - skipping startup alert (to avoid spam)")
     
-    # Main loop with auto-restart
     while True:
         try:
             time.sleep(config.CHECK_INTERVAL)
