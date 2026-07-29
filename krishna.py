@@ -137,14 +137,16 @@ GLOBAL_NEWS_FEEDS = [
     "https://www.investing.com/rss/news.rss"
 ]
 
+# 🔒 थ्रेड सेफ्टीसाठी लॉक सिस्टम
+signal_lock = threading.Lock()
+
 last_signal_state = {}
 last_alert_candle_time = {}
 seen_news_titles = set()
 news_watched_stocks = set()
 
-# 🎯 नवीन ट्रॅकिंग वेरियबल्स (Latest News & Pos/Neg Count Tracking)
-stock_latest_news_time = {}  # {symbol: datetime}
-stock_sentiment_counts = {}   # {symbol: {"pos": 0, "neg": 0}}
+stock_latest_news_time = {}  
+stock_sentiment_counts = {}   
 
 day_news_log = []
 day_plus_signals_log = []
@@ -295,7 +297,6 @@ def calculate_strike_price(index_name, current_price, option_type="CE"):
     atm_strike = round(current_price / step) * step
     return f"{atm_strike} {option_type}"
 
-# 🎯 सुधारित सेंटीमेंट ॲनालिसिस (Correct Positive & Negative Detection)
 def analyze_sentiment(title):
     t = title.lower()
     
@@ -491,69 +492,70 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
 
             is_fresh_signal = (fresh_bullish or fresh_bearish) or (current_direction != "NONE" and prev_direction == "NONE")
 
-            if is_fresh_signal and current_direction != "NONE":
-                if last_alert_candle_time.get(symbol) == candle_timestamp:
-                    return None
+            # 🔒 THREAD SAFETY LOCK (डबल अलर्ट पूर्णपणे बंद करण्यासाठी)
+            with signal_lock:
+                if is_fresh_signal and current_direction != "NONE":
+                    if last_alert_candle_time.get(symbol) == candle_timestamp:
+                        return None
 
-                last_signal_state[symbol] = current_direction
-                last_alert_candle_time[symbol] = candle_timestamp
+                    last_signal_state[symbol] = current_direction
+                    last_alert_candle_time[symbol] = candle_timestamp
 
-                action = "BUY / CALL (CE)" if current_direction == "BULLISH" else "BUY / PUT (PE)"
-                opt_type = "CE" if current_direction == "BULLISH" else "PE"
+                    action = "BUY / CALL (CE)" if current_direction == "BULLISH" else "BUY / PUT (PE)"
+                    opt_type = "CE" if current_direction == "BULLISH" else "PE"
 
-                if current_direction == "BULLISH":
-                    stop_loss = current_close - (atr_val * 1.5)
-                    target = current_close + ((current_close - stop_loss) * 1.5)
+                    if current_direction == "BULLISH":
+                        stop_loss = current_close - (atr_val * 1.5)
+                        target = current_close + ((current_close - stop_loss) * 1.5)
+                    else:
+                        stop_loss = current_close + (atr_val * 1.5)
+                        target = current_close - ((stop_loss - current_close) * 1.5)
+
+                    risk_per_share = abs(current_close - stop_loss)
+                    recommended_qty = int(MAX_RISK_PER_TRADE / risk_per_share) if risk_per_share > 0 else 1
+
+                    suggested_strike = calculate_strike_price(display_name, current_close, opt_type) if is_index else "N/A"
+
+                    sig_obj = {
+                        "name": display_name,
+                        "symbol": symbol,
+                        "direction": current_direction,
+                        "sentiment": f"{'🟢' if current_direction == 'BULLISH' else '🔴'} {current_direction} PLUS (+) SIGN",
+                        "action": action,
+                        "price": current_close,
+                        "sl": stop_loss,
+                        "target": target,
+                        "rsi": rsi_val,
+                        "strike": suggested_strike,
+                        "warning_note": warning_note,
+                        "vol_ratio": f"{vol_ratio:.1f}x",
+                        "time": datetime.now(IST).strftime("%I:%M:%S %p"),
+                        "vwap_info": vwap_info,
+                        "supertrend_info": supertrend_info,
+                        "risk_per_share": risk_per_share,
+                        "recommended_qty": recommended_qty
+                    }
+
+                    day_plus_signals_log.append(sig_obj)
+                    
+                    TRADE_STATS["total_signals"] += 1
+                    ACTIVE_MONITORED_TRADES.append({
+                        "symbol": symbol,
+                        "direction": current_direction,
+                        "target": target,
+                        "sl": stop_loss
+                    })
+
+                    return sig_obj
+
                 else:
-                    stop_loss = current_close + (atr_val * 1.5)
-                    target = current_close - ((stop_loss - current_close) * 1.5)
-
-                risk_per_share = abs(current_close - stop_loss)
-                recommended_qty = int(MAX_RISK_PER_TRADE / risk_per_share) if risk_per_share > 0 else 1
-
-                suggested_strike = calculate_strike_price(display_name, current_close, opt_type) if is_index else "N/A"
-
-                sig_obj = {
-                    "name": display_name,
-                    "symbol": symbol,
-                    "direction": current_direction,
-                    "sentiment": f"{'🟢' if current_direction == 'BULLISH' else '🔴'} {current_direction} PLUS (+) SIGN",
-                    "action": action,
-                    "price": current_close,
-                    "sl": stop_loss,
-                    "target": target,
-                    "rsi": rsi_val,
-                    "strike": suggested_strike,
-                    "warning_note": warning_note,
-                    "vol_ratio": f"{vol_ratio:.1f}x",
-                    "time": datetime.now(IST).strftime("%I:%M:%S %p"),
-                    "vwap_info": vwap_info,
-                    "supertrend_info": supertrend_info,
-                    "risk_per_share": risk_per_share,
-                    "recommended_qty": recommended_qty
-                }
-
-                day_plus_signals_log.append(sig_obj)
-                
-                TRADE_STATS["total_signals"] += 1
-                ACTIVE_MONITORED_TRADES.append({
-                    "symbol": symbol,
-                    "direction": current_direction,
-                    "target": target,
-                    "sl": stop_loss
-                })
-
-                return sig_obj
-
-            else:
-                last_signal_state[symbol] = current_direction
+                    last_signal_state[symbol] = current_direction
 
         except Exception:
             pass
 
     return None
 
-# 🎯 सुधारित न्यूज लॉजिक (फक्त लेटेस्ट बातमी + पॉझिटिव्ह/नेगेटिव्ह मार्क जोडले)
 def fetch_and_collect_stock_news():
     global seen_news_titles, news_watched_stocks, day_news_log, stock_sentiment_counts, stock_latest_news_time
 
@@ -580,23 +582,23 @@ def fetch_and_collect_stock_news():
                     if title:
                         norm_title = normalize_text(title)
 
-                        # १. डुप्लिकेट न्युज चेक (शीर्षक आधीच पाहिले असेल तर सोडून देणे)
+                        # १. डुप्लिकेट न्युज फिल्टर
                         if norm_title in seen_news_titles:
                             continue
 
                         display_name, yf_symbol = extract_single_stock_only(title)
                         
                         if display_name and yf_symbol:
-                            # २. लेटेस्ट न्युज चेक (स्टॉकसाठी यापूर्वीच्या बातमीपेक्षा नवीन वेळ असेल तरच घेणे)
+                            # बातमी दिसताच लगेच ब्लॅकलिस्ट करणे
+                            seen_news_titles.add(norm_title)
+
                             prev_pub_time = stock_latest_news_time.get(yf_symbol)
                             if prev_pub_time and exact_pub_time <= prev_pub_time:
-                                seen_news_titles.add(norm_title)
                                 continue
 
                             sentiment, _ = analyze_sentiment(title)
 
                             if "NEUTRAL" not in sentiment:
-                                seen_news_titles.add(norm_title)
                                 stock_latest_news_time[yf_symbol] = exact_pub_time
 
                                 price = get_accurate_price(yf_symbol)
@@ -605,7 +607,6 @@ def fetch_and_collect_stock_news():
 
                                 news_watched_stocks.add((display_name, yf_symbol))
                                 
-                                # ३. पॉझिटिव्ह आणि नेगेटिव्ह न्यूज काउंट अपडेट
                                 if yf_symbol not in stock_sentiment_counts:
                                     stock_sentiment_counts[yf_symbol] = {"pos": 0, "neg": 0}
 
@@ -617,7 +618,6 @@ def fetch_and_collect_stock_news():
                                 pos_count = stock_sentiment_counts[yf_symbol]["pos"]
                                 neg_count = stock_sentiment_counts[yf_symbol]["neg"]
                                 
-                                # 🟢/🔴 काउंट मेसेज फॉरमॅट
                                 marks_str = f"🟢 {pos_count} Pos | 🔴 {neg_count} Neg"
 
                                 news_obj = {
@@ -637,7 +637,7 @@ def fetch_and_collect_stock_news():
         except Exception:
             pass
 
-    # 📰 न्यूज मेसेज अलर्ट पाठवणे
+    # 📰 न्यूज मेसेज अलर्ट
     if new_news_items and is_market_hours():
         if len(new_news_items) == 1:
             n = new_news_items[0]
@@ -940,24 +940,31 @@ def scan_and_alert():
         send_330_pm_closing_summary()
         last_sent_330_date = today_date
 
-    # १. लाईव्ह बातम्या फेच करणे (लेटेस्ट फिल्टरसह)
+    # १. लाईव्ह बातम्या फेच करणे
     fetch_and_collect_stock_news()
 
     # २. ओपन ट्रेड्स Target / SL अपडेट
     update_and_check_trade_outcomes()
 
-    # ३. समांतर (Parallel) 3-Min EMA scanning
+    # ३. युनिक स्टॉक लिस्ट बनवून स्कॅन करणे (Duplicate Entry Blocked)
     if is_market_hours():
-        scan_items = []
-        
+        scan_dict = {}
+
+        # १. इंडायसेस ॲड करणे
         for index_sym, index_name in INDICES_MAP.items():
-            scan_items.append((index_sym, index_name, True))
+            scan_dict[index_sym] = (index_sym, index_name, True)
 
+        # २. बातम्या आलेले स्टॉक्स ॲड करणे
         for s_name, s_sym in list(news_watched_stocks):
-            scan_items.append((s_sym, s_name, False))
+            if s_sym not in scan_dict:
+                scan_dict[s_sym] = (s_sym, s_name, False)
 
+        # ३. निफ्टी वेटेज स्टॉक्स ॲड करणे
         for w_name, w_sym in NIFTY_WEIGHTAGE_STOCKS.items():
-            scan_items.append((w_sym, w_name, False))
+            if w_sym not in scan_dict:
+                scan_dict[w_sym] = (w_sym, w_name, False)
+
+        scan_items = list(scan_dict.values())
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             executor.map(_scan_single_item, scan_items)
@@ -969,7 +976,7 @@ if __name__ == "__main__":
     t.daemon = True
     t.start()
 
-    send_telegram_alert("🚀 <b>Radar Engine Active! Latest News & Pos/Neg Count Tracker Enabled!</b>")
+    send_telegram_alert("🚀 <b>Radar Engine Active! Duplicate Alert Protection Enabled!</b>")
 
     while True:
         try:
