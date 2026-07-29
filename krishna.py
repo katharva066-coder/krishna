@@ -142,7 +142,10 @@ last_alert_candle_time = {}
 seen_news_titles = set()
 news_watched_stocks = set()
 
-stock_news_tracker = {}
+# 🎯 नवीन ट्रॅकिंग वेरियबल्स (Latest News & Pos/Neg Count Tracking)
+stock_latest_news_time = {}  # {symbol: datetime}
+stock_sentiment_counts = {}   # {symbol: {"pos": 0, "neg": 0}}
+
 day_news_log = []
 day_plus_signals_log = []
 
@@ -292,18 +295,23 @@ def calculate_strike_price(index_name, current_price, option_type="CE"):
     atm_strike = round(current_price / step) * step
     return f"{atm_strike} {option_type}"
 
+# 🎯 सुधारित सेंटीमेंट ॲनालिसिस (Correct Positive & Negative Detection)
 def analyze_sentiment(title):
     t = title.lower()
+    
     bullish_kw = [
-        "surge", "jump", "rally", "gain", "profit", "up", "growth", "deal", "order", 
-        "record", "high", "buy", "rise", "soar", "win", "bullish", "approved", "target", 
-        "dividend", "results", "revenue", "beat", "positive", "peace", "rate cut", "trade deal"
+        "surge", "jump", "rally", "gain", "profit up", "growth", "deal", "order", 
+        "record high", "buy", "rise", "soar", "win", "bullish", "approved", "target up", 
+        "dividend", "results beat", "revenue up", "positive", "outperform", "upgrade", 
+        "expansion", "partnership", "net profit rises", "shares surge"
     ]
+    
     bearish_kw = [
         "plunge", "drop", "fall", "loss", "down", "slump", "crash", "fine", "penalty", 
-        "low", "cut", "slash", "bearish", "raid", "resigns", "probe", "debt", "miss", "weak", 
-        "negative", "war", "trump", "crude oil", "crude", "tariff", "sanction", "conflict", 
-        "inflation", "fed hike", "rate hike", "tension", "crisis"
+        "record low", "cut", "slash", "bearish", "raid", "resigns", "probe", "debt", 
+        "miss", "weak", "negative", "downgrade", "decline", "sebi", "notice", "fraud", 
+        "default", "delay", "investigation", "tax raid", "net loss", "margin fall", 
+        "sanction", "litigation", "underperform", "shares fall", "profit drops"
     ]
 
     bull_score = sum(1 for k in bullish_kw if k in t)
@@ -409,7 +417,6 @@ def get_win_rate_summary_text():
         f"• Win Rate Accuracy: <b>{win_rate:.1f}%</b> 🎯\n"
     )
 
-# 🎯 3-MIN EMA CROSS SIGNAL LOGIC (RSI/VWAP/SUPERTREND STATUS ONLY)
 def check_3min_plus_signal(symbol, display_name, is_index=False):
     global last_signal_state, last_alert_candle_time
 
@@ -429,7 +436,6 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
             if current_close == 0.0:
                 current_close = float(df["Close"].iloc[-1])
 
-            # ₹२०० पेक्षा कमी किमतीच्या स्टॉक्ससाठी कोणतेही अलर्ट नको (इंडायसेस सोडता)
             if not is_index and current_close < 200:
                 return None
 
@@ -439,7 +445,6 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
             df["RSI_14"] = RSIIndicator(close=df["Close"], window=14).rsi()
             df["Vol_SMA"] = df["Volume"].rolling(window=20).mean()
 
-            # VWAP & SUPERTREND (फक्त मॅसेजमध्ये स्टेटस दाखवण्यासाठी)
             tp = (df["High"] + df["Low"] + df["Close"]) / 3
             df["VWAP"] = (tp * df["Volume"]).cumsum() / df["Volume"].cumsum()
             current_vwap = round(float(df["VWAP"].iloc[-1]), 2) if not df["VWAP"].empty else float(df["Close"].iloc[-1])
@@ -475,7 +480,6 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
             prev_ema9 = float(row_prev["EMA_9"])
             prev_ema26 = float(row_prev["EMA_26"])
 
-            # 🎯 Pure 3-Min EMA Cross (RSI चा अट काढला आहे)
             is_bullish_now = (now_ema9 > now_ema26)
             is_bearish_now = (now_ema9 < now_ema26)
 
@@ -549,9 +553,9 @@ def check_3min_plus_signal(symbol, display_name, is_index=False):
 
     return None
 
-# 🎯 MULTI-NEWS BATCH ALERT LOGIC (एकाच वेळी अनेक बातम्या आल्यास एकत्र मेसेज पाठवणे)
+# 🎯 सुधारित न्यूज लॉजिक (फक्त लेटेस्ट बातमी + पॉझिटिव्ह/नेगेटिव्ह मार्क जोडले)
 def fetch_and_collect_stock_news():
-    global seen_news_titles, news_watched_stocks, day_news_log, stock_news_tracker
+    global seen_news_titles, news_watched_stocks, day_news_log, stock_sentiment_counts, stock_latest_news_time
 
     new_news_items = []
 
@@ -576,63 +580,71 @@ def fetch_and_collect_stock_news():
                     if title:
                         norm_title = normalize_text(title)
 
-                        if norm_title not in seen_news_titles:
-                            display_name, yf_symbol = extract_single_stock_only(title)
-                            
-                            if display_name and yf_symbol:
-                                stock_news_key = f"{yf_symbol}_{norm_title}"
+                        # १. डुप्लिकेट न्युज चेक (शीर्षक आधीच पाहिले असेल तर सोडून देणे)
+                        if norm_title in seen_news_titles:
+                            continue
+
+                        display_name, yf_symbol = extract_single_stock_only(title)
+                        
+                        if display_name and yf_symbol:
+                            # २. लेटेस्ट न्युज चेक (स्टॉकसाठी यापूर्वीच्या बातमीपेक्षा नवीन वेळ असेल तरच घेणे)
+                            prev_pub_time = stock_latest_news_time.get(yf_symbol)
+                            if prev_pub_time and exact_pub_time <= prev_pub_time:
+                                seen_news_titles.add(norm_title)
+                                continue
+
+                            sentiment, _ = analyze_sentiment(title)
+
+                            if "NEUTRAL" not in sentiment:
+                                seen_news_titles.add(norm_title)
+                                stock_latest_news_time[yf_symbol] = exact_pub_time
+
+                                price = get_accurate_price(yf_symbol)
+                                if price < 200:
+                                    continue
+
+                                news_watched_stocks.add((display_name, yf_symbol))
                                 
-                                if stock_news_key not in seen_news_titles:
-                                    sentiment, _ = analyze_sentiment(title)
+                                # ३. पॉझिटिव्ह आणि नेगेटिव्ह न्यूज काउंट अपडेट
+                                if yf_symbol not in stock_sentiment_counts:
+                                    stock_sentiment_counts[yf_symbol] = {"pos": 0, "neg": 0}
 
-                                    if "NEUTRAL" not in sentiment:
-                                        seen_news_titles.add(norm_title)
-                                        seen_news_titles.add(stock_news_key)
+                                if "POSITIVE" in sentiment:
+                                    stock_sentiment_counts[yf_symbol]["pos"] += 1
+                                else:
+                                    stock_sentiment_counts[yf_symbol]["neg"] += 1
 
-                                        price = get_accurate_price(yf_symbol)
-                                        
-                                        if price < 200:
-                                            continue
+                                pos_count = stock_sentiment_counts[yf_symbol]["pos"]
+                                neg_count = stock_sentiment_counts[yf_symbol]["neg"]
+                                
+                                # 🟢/🔴 काउंट मेसेज फॉरमॅट
+                                marks_str = f"🟢 {pos_count} Pos | 🔴 {neg_count} Neg"
 
-                                        news_watched_stocks.add((display_name, yf_symbol))
-                                        
-                                        if yf_symbol not in stock_news_tracker:
-                                            stock_news_tracker[yf_symbol] = {"pos": 0, "neg": 0}
+                                news_obj = {
+                                    "stock": display_name,
+                                    "symbol": yf_symbol,
+                                    "price": price,
+                                    "title": title,
+                                    "sentiment": sentiment,
+                                    "time": pub_time_formatted,
+                                    "link": link,
+                                    "marks": marks_str
+                                }
 
-                                        if "POSITIVE" in sentiment:
-                                            stock_news_tracker[yf_symbol]["pos"] += 1
-                                        else:
-                                            stock_news_tracker[yf_symbol]["neg"] += 1
-
-                                        pos_count = stock_news_tracker[yf_symbol]["pos"]
-                                        neg_count = stock_news_tracker[yf_symbol]["neg"]
-                                        dots_str = ("🟢" * pos_count) + ("🔴" * neg_count)
-
-                                        news_obj = {
-                                            "stock": display_name,
-                                            "symbol": yf_symbol,
-                                            "price": price,
-                                            "title": title,
-                                            "sentiment": sentiment,
-                                            "time": pub_time_formatted,
-                                            "link": link,
-                                            "dots": dots_str
-                                        }
-
-                                        day_news_log.append(news_obj)
-                                        new_news_items.append(news_obj)
+                                day_news_log.append(news_obj)
+                                new_news_items.append(news_obj)
 
         except Exception:
             pass
 
-    # 📰 जर एकापेक्षा जास्त बातम्या एकत्र आल्या तर एकच Grouped Alert पाठवणे
+    # 📰 न्यूज मेसेज अलर्ट पाठवणे
     if new_news_items and is_market_hours():
         if len(new_news_items) == 1:
             n = new_news_items[0]
             link_html = f'<a href="{n["link"]}">{n["title"]}</a>' if n["link"] else f'<i>{n["title"]}</i>'
             news_alert_msg = (
                 f"📰 <b>LIVE STOCK NEWS ALERT</b>\n"
-                f"🏢 <b>#{n['stock']}</b> | {n['dots']}\n"
+                f"🏢 <b>#{n['stock']}</b> | {n['marks']}\n"
                 f"═════════════════════════\n"
                 f"• 📰 <b>Headline:</b> {link_html}\n"
                 f"• 📊 <b>Sentiment:</b> {n['sentiment']}\n"
@@ -652,7 +664,7 @@ def fetch_and_collect_stock_news():
             for n in new_news_items:
                 link_html = f'<a href="{n["link"]}">{n["title"]}</a>' if n["link"] else f'<i>{n["title"]}</i>'
                 news_alert_msg += (
-                    f"🏢 <b>#{n['stock']}</b> | {n['dots']} ({n['sentiment']})\n"
+                    f"🏢 <b>#{n['stock']}</b> | {n['marks']} ({n['sentiment']})\n"
                     f"• 📰 {link_html}\n"
                     f"• 💰 Price: ₹{n['price']:,.2f}\n"
                     f"-----------------------------------------\n"
@@ -870,8 +882,8 @@ def send_330_pm_closing_summary():
     msg += f"📰 <b>TODAY'S SPECIFIC STOCK NEWS ({len(day_news_log)}):</b>\n"
     if day_news_log:
         for item in day_news_log[-8:]:
-            dots = item.get('dots', '')
-            msg += f"• <b>#{item['stock']}</b> ({item['time']}) | {dots} {item['sentiment']}\n"
+            marks = item.get('marks', '')
+            msg += f"• <b>#{item['stock']}</b> ({item['time']}) | {marks} | {item['sentiment']}\n"
             if item.get('link'):
                 msg += f"  └ 📰 <a href=\"{item['link']}\">{item['title']}</a>\n"
     else:
@@ -891,9 +903,12 @@ def send_330_pm_closing_summary():
 
     send_telegram_alert(msg)
 
+    # दिवस संपल्यावर डेटा रीसेट करणे
     day_news_log.clear()
     day_plus_signals_log.clear()
-    stock_news_tracker.clear()
+    stock_sentiment_counts.clear()
+    stock_latest_news_time.clear()
+    seen_news_titles.clear()
     TRADE_STATS["total_signals"] = 0
     TRADE_STATS["target_hit"] = 0
     TRADE_STATS["sl_hit"] = 0
@@ -925,7 +940,7 @@ def scan_and_alert():
         send_330_pm_closing_summary()
         last_sent_330_date = today_date
 
-    # १. लाईव्ह बातम्या फेच करणे (अनेक बातम्या आल्यास १ मेसेज अलर्ट)
+    # १. लाईव्ह बातम्या फेच करणे (लेटेस्ट फिल्टरसह)
     fetch_and_collect_stock_news()
 
     # २. ओपन ट्रेड्स Target / SL अपडेट
@@ -954,7 +969,7 @@ if __name__ == "__main__":
     t.daemon = True
     t.start()
 
-    send_telegram_alert("🚀 <b>Radar Engine Active! Pure 3-Min EMA Cross & Multi-News Batch Mode Enabled!</b>")
+    send_telegram_alert("🚀 <b>Radar Engine Active! Latest News & Pos/Neg Count Tracker Enabled!</b>")
 
     while True:
         try:
