@@ -148,12 +148,24 @@ GLOBAL_NEWS_FEEDS = [
     "https://www.investing.com/rss/news.rss"
 ]
 
+# 🔒 24*7 Macro News Keywords List (Requested + Smart Additions)
+MACRO_KEYWORDS = [
+    "fed", "federal reserve", "fomc", "jerome powell", "interest rate", 
+    "rate cut", "rate hike", "repo rate", "rbi", "mpc", "cpi", "core cpi", 
+    "ppi", "inflation", "gdp", "pmi", "nfp", "nonfarm payroll", "unemployment", 
+    "retail sales", "consumer confidence", "recession", "soft landing", "hard landing", 
+    "dxy", "dollar index", "usdinr", "treasury yield", "brent crude", "crude oil", 
+    "war", "missile", "tariff", "tsunami", "flood", "geopolitical", "opec", 
+    "bond yield", "fiscal deficit"
+]
+
 # 🔒 थ्रेड सेफ्टीसाठी लॉक सिस्टम
 signal_lock = threading.Lock()
 
 last_signal_state = {}
 last_alert_candle_time = {}
 seen_news_titles = set()
+seen_macro_news_titles = set()
 news_watched_stocks = set()  # लाईव्ह मार्केट न्यूजमुळे जोडले गेलेले स्टॉक्स
 
 stock_latest_news_time = {}  
@@ -642,6 +654,57 @@ def fetch_and_collect_stock_news():
         except Exception:
             pass
 
+# 🚀 24*7 Macro & Global News Keyword Alert Function (Newly Added Feature)
+def check_macro_and_global_news():
+    global seen_macro_news_titles
+    all_feeds = INDIAN_NEWS_FEEDS + GLOBAL_NEWS_FEEDS
+    now_ist = datetime.now(IST)
+
+    for rss_url in all_feeds:
+        try:
+            resp = requests.get(rss_url, headers=HTTP_HEADERS, timeout=6)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.content, "xml")
+                items = soup.find_all("item")
+                if not items:
+                    soup = BeautifulSoup(resp.content, "html.parser")
+                    items = soup.find_all("item")
+
+                for item in items[:15]:
+                    title = item.title.text.strip() if item.title else ""
+                    link = item.link.text.strip() if item.link else ""
+                    if not title or not link:
+                        continue
+
+                    norm_title = normalize_text(title)
+                    if norm_title in seen_macro_news_titles:
+                        continue
+
+                    title_lower = title.lower()
+                    matched_kw = None
+                    for kw in MACRO_KEYWORDS:
+                        if kw in title_lower:
+                            matched_kw = kw
+                            break
+
+                    if matched_kw:
+                        seen_macro_news_titles.add(norm_title)
+                        sentiment, _ = analyze_sentiment(title)
+
+                        msg = (
+                            f"🚨 <b>[24*7 MACRO & GLOBAL NEWS ALERT]</b> 🚨\n"
+                            f"📅 <i>{now_ist.strftime('%d-%b-%Y | %I:%M:%S %p')}</i>\n"
+                            f"═════════════════════════\n\n"
+                            f"🔑 <b>Trigger Keyword:</b> <code>{matched_kw.upper()}</code>\n"
+                            f"📊 <b>Sentiment:</b> {sentiment}\n"
+                            f"📰 <b>News:</b> <a href=\"{link}\">{title}</a>\n\n"
+                            f"═════════════════════════\n"
+                            f"🤖 <i>Shambhu's Live Precision Radar Engine</i>"
+                        )
+                        send_telegram_alert(msg)
+        except Exception:
+            pass
+
 def send_instant_plus_signal_alert(sig):
     now_str = datetime.now(IST).strftime("%d-%b-%Y | %I:%M:%S %p")
     
@@ -838,6 +901,7 @@ def send_330_pm_closing_summary():
     stock_sentiment_counts.clear()
     stock_latest_news_time.clear()
     seen_news_titles.clear()
+    seen_macro_news_titles.clear()
     last_news_alert_time.clear()
     TRADE_STATS["total_signals"] = 0
     TRADE_STATS["target_hit"] = 0
@@ -869,6 +933,9 @@ def scan_and_alert():
     if current_time == "15:30" and last_sent_330_date != today_date:
         send_330_pm_closing_summary()
         last_sent_330_date = today_date
+
+    # 🚀 24*7 Macro & Global News Keyword Scanning (Runs Round-the-Clock)
+    check_macro_and_global_news()
 
     # १. लाईव्ह मार्केट बातम्या फेच करणे व वॉचलिस्ट अपडेट करणे
     fetch_and_collect_stock_news()
@@ -905,7 +972,7 @@ if __name__ == "__main__":
     t.daemon = True
     t.start()
 
-    send_telegram_alert("🚀 <b>Radar Engine Active! EMA Crossover & Requirement Logic Enabled!</b>")
+    send_telegram_alert("🚀 <b>Radar Engine Active! EMA Crossover & 24*7 Macro News Alerts Enabled!</b>")
 
     while True:
         try:
