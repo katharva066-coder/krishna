@@ -7,3 +7,6 @@ matplotlib
 ta
 lxml
 pyttsx3
+flask-socketio
+eventlet
+openai
