@@ -1762,24 +1762,22 @@ if __name__ == "__main__":
     health_thread = threading.Thread(target=run_health_check, daemon=True)
     health_thread.start()
     
-    if not is_cloud_platform():
-        try:
-            startup_msg = (
-                "🚀 <b>Enhanced Radar Engine Active!</b>\n\n"
-                "📊 EMA Crossover & 24*7 Macro News Alerts\n"
-                "⚡ Interactive Telegram Buttons\n"
-                "🤖 AI Sentiment Analysis (if API key set)\n"
-                "🔊 Voice Alerts for Critical Signals\n"
-                "💾 SQLite Database Storage\n"
-                "🌐 Live Web Dashboard\n"
-                "🎯 Priority Scanning & Auto-Restart"
-            )
-            send_telegram_alert(startup_msg)
-            logger.info("Startup alert sent to Telegram")
-        except Exception as e:
-            logger.error(f"Startup alert error: {e}")
-    else:
-        logger.info("Cloud platform - skipping startup alert (to avoid spam)")
+    # Startup Alert - आता Cloud वर पण नेहमी पाठवा
+try:
+    startup_msg = (
+        "🚀 <b>Enhanced Radar Engine Active!</b>\n\n"
+        "📊 EMA Crossover & 24*7 Macro News Alerts\n"
+        "⚡ Interactive Telegram Buttons\n"
+        "🤖 AI Sentiment Analysis (if API key set)\n"
+        "🔊 Voice Alerts for Critical Signals\n"
+        "💾 SQLite Database Storage\n"
+        "🌐 Live Web Dashboard\n"
+        "🎯 Priority Scanning & Auto-Restart"
+    )
+    send_telegram_alert(startup_msg)
+    logger.info("Startup alert sent to Telegram")
+except Exception as e:
+    logger.error(f"Startup alert error: {e}")
     
     while True:
         try:
