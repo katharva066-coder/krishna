@@ -692,18 +692,20 @@ STOCKS_MAP = {
 }
 
 INDIAN_NEWS_FEEDS = [
-    "https://www.moneycontrol.com/rss/marketreports.xml",
-    "https://www.moneycontrol.com/rss/MCtopnews.xml",
+    "https://www.moneycontrol.com/rss/MCtopnews.xml",  # ही कधी कधी रिकामी येते, पण ठेवा
     "https://www.moneycontrol.com/rss/business.xml",
+    "https://www.moneycontrol.com/rss/markets/stocks.xml",   # <-- नवीन
+    "https://www.moneycontrol.com/rss/ipo.xml",              # <-- नवीन (IPO न्यूज)
     "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms",
     "https://www.livemint.com/rss/markets",
-    "https://www.business-standard.com/rss/markets-106.rss",
+    # Business Standard काढून टाका (कारण 403 येतो)
     "https://www.cnbctv18.com/commonfeeds/v1/cne/rss/market.xml"
 ]
 
 GLOBAL_NEWS_FEEDS = [
+    "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",  # WSJ Markets
+    "https://www.wsj.com/xml/rss/3_7085.xml",        # WSJ Market News
     "https://search.cnbc.com/rs/search/combinedrenderer.view?query=market&partnerId=2000&target=all",
-    "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
     "https://www.investing.com/rss/news.rss"
 ]
 
