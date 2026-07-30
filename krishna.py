@@ -1354,8 +1354,8 @@ def fetch_and_collect_stock_news():
                         if "NEUTRAL" not in sentiment:
                             stock_latest_news_time[yf_symbol] = pub_time
                             price = get_accurate_price(yf_symbol)
-                            if price < 200:
-                                continue
+                            #if price < 200:
+                               # continue
                             news_watched_stocks.add((display_name, yf_symbol))
                             cycle_seen_symbols.add(yf_symbol)
                             if yf_symbol not in stock_sentiment_counts:
