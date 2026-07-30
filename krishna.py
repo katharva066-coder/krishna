@@ -75,7 +75,7 @@ class Config:
         self.STOCK_NEWS_AGE_LIMIT = 3600
         self.MACRO_NEWS_AGE_LIMIT = 1800
         self.MAX_WORKERS = int(os.getenv("MAX_WORKERS", 10))
-        self.CACHE_TTL = int(os.getenv("CACHE_TTL", 5))
+        self.CACHE_TTL = int(os.getenv("CACHE_TTL", 15))  # 5 वरून 15 केले
         self.BATCH_INTERVAL = 60
         self.HIGH_PRIORITY_STOCKS = ["RELIANCE.NS", "HDFCBANK.NS", "INFY.NS", "TATAMOTORS.NS", "BAJFINANCE.NS"]
         self.MEDIUM_PRIORITY_STOCKS = ["ICICIBANK.NS", "KOTAKBANK.NS", "SBIN.NS", "LT.NS"]
@@ -441,7 +441,7 @@ class SmartNewsFilter:
     
     def should_alert(self, news: Dict) -> bool:
         quality = self.get_quality_score(news.get('link', ''), news.get('title', ''))
-        return quality >= 6
+        return quality >= 5  # 6 वरून 5 केले (अधिक बातम्या येण्यासाठी)
 
 news_filter = SmartNewsFilter()
 
@@ -894,7 +894,8 @@ def is_market_hours():
     end = now.replace(hour=15, minute=30, second=0, microsecond=0)
     return start <= now <= end
 
-@retry_on_failure(max_retries=2, delay=1)
+# ---------- IMPROVED get_accurate_price ----------
+@retry_on_failure(max_retries=5, delay=2)   # 2->5, delay 1->2
 def get_accurate_price(symbol: str) -> float:
     cached_price = price_cache.get(symbol)
     if cached_price:
@@ -907,7 +908,7 @@ def get_accurate_price(symbol: str) -> float:
                 price = float(price)
                 price_cache.set(symbol, price)
                 return price
-            df = t.history(period="1d", interval="1m")
+            df = t.history(period="2d", interval="1m")  # 1d -> 2d
             if not df.empty:
                 price = float(df["Close"].iloc[-1])
                 price_cache.set(symbol, price)
@@ -941,7 +942,6 @@ def calculate_strike_price(index_name, current_price, option_type="CE"):
     return f"{atm_strike} {option_type}"
 
 def analyze_sentiment(title):
-    # Try AI first, fallback to keyword
     if OPENAI_AVAILABLE:
         return analyze_sentiment_ai(title)
     else:
@@ -1152,24 +1152,37 @@ def check_3min_plus_signal(symbol: str, display_name: str, is_index: bool = Fals
 
 # ==================== NEWS FUNCTIONS ====================
 def process_rss_items(soup, max_items: int = 20, age_limit: int = 3600) -> List[Dict]:
+    # प्रथम item टॅग शोधा (RSS 2.0)
     items = soup.find_all("item")
+    # नाही मिळाल्यास entry टॅग शोधा (Atom)
     if not items:
-        soup = BeautifulSoup(str(soup), "html.parser")
-        items = soup.find_all("item")
+        items = soup.find_all("entry")
     processed_items = []
     now_ist = datetime.now(IST)
     for item in items[:max_items]:
         try:
+            # RSS 2.0 साठी title, link, pubDate
             title = item.title.text.strip() if item.title else ""
             link = item.link.text.strip() if item.link else ""
             pub_date_raw = item.pubDate.text.strip() if item.pubDate else ""
+            # Atom साठी fallback
+            if not title:
+                title = item.find("title").text.strip() if item.find("title") else ""
+            if not link:
+                link_el = item.find("link")
+                if link_el:
+                    link = link_el.get("href") if link_el.get("href") else link_el.text.strip()
+            if not pub_date_raw:
+                pub_el = item.find("published") or item.find("updated")
+                if pub_el:
+                    pub_date_raw = pub_el.text.strip()
             if not title:
                 continue
             pub_time = parse_exact_pub_date(pub_date_raw)
             if (now_ist - pub_time).total_seconds() > age_limit:
                 continue
             quality = news_filter.get_quality_score(link, title)
-            if quality < 6:
+            if quality < 5:   # 6 वरून 5 केले
                 continue
             processed_items.append({
                 'title': title,
@@ -1245,6 +1258,24 @@ def send_macro_news_batch_alert(batch_news_items: List[Dict], now_ist: datetime)
     )
     send_telegram_alert(msg)
 
+# ==================== STOCK NEWS BATCH ALERT (NEW) ====================
+def send_stock_news_batch_alert(news_items: List[Dict], now_ist: datetime):
+    if not news_items:
+        return
+    msg = (
+        f"📰 <b>[STOCK SPECIFIC NEWS ALERT]</b> 📰\n"
+        f"📅 <i>{now_ist.strftime(config.DATETIME_FORMAT)}</i>\n"
+        f"═════════════════════════\n\n"
+    )
+    for idx, n in enumerate(news_items, 1):
+        msg += (
+            f"{n['sentiment']} <b>#{n['stock']}</b> (₹{n['price']:,.2f})\n"
+            f"📰 <a href=\"{n['link']}\">{n['title'][:120]}{'...' if len(n['title']) > 120 else ''}</a>\n"
+            f"⭐ Quality: {n.get('quality', 5)}/10\n\n"
+        )
+    msg += "═════════════════════════\n🤖 <i>Shambhu's Live Precision Radar Engine</i>"
+    send_telegram_alert(msg)
+
 # ==================== MODIFIED ALERT WITH INTERACTIVE BUTTONS, VOICE, DB ====================
 def send_instant_plus_signal_alert(sig_dict):
     now_str = datetime.now(IST).strftime(config.DATETIME_FORMAT)
@@ -1298,7 +1329,6 @@ def send_instant_plus_signal_alert(sig_dict):
         f"🤖 <i>Shambhu's Live Precision Radar Engine</i>"
     )
     clean_sym = sig_dict['symbol'].replace('.NS', '')
-    # Interactive Buttons
     reply_markup = {
         "inline_keyboard": [
             [{"text": "📊 Live Chart", "url": f"https://in.tradingview.com/chart/?symbol=NSE:{clean_sym}"}],
@@ -1308,82 +1338,96 @@ def send_instant_plus_signal_alert(sig_dict):
         ]
     }
     send_telegram_alert(msg, reply_markup=reply_markup)
-    # Chart image
     chart_img = generate_chart_image(sig_dict['symbol'], sig_dict['name'])
     if chart_img:
         caption = f"📊 <b>{sig_dict['name']}</b> ({sig_dict['sentiment']})\n⚡ <b>Action:</b> {sig_dict['action']} | 💰 <b>Price:</b> ₹{sig_dict['price']:,.2f}\n🛑 <b>SL:</b> ₹{sig_dict['sl']:,.2f} | 🎯 <b>Target:</b> ₹{sig_dict['target']:,.2f}\n📊 Confidence: {sig_dict.get('confidence', 0)}%"
         send_telegram_photo(chart_img, caption=caption)
-    
-    # Voice alert for high confidence
     if confidence >= 80:
         voice_text = f"Alert! {sig_dict['direction']} signal for {sig_dict['name']} at price {sig_dict['price']}. Target {sig_dict['target']}, Stop loss {sig_dict['sl']}."
         send_voice_alert(voice_text)
-    
-    # Save to Database
     db.save_signal(sig_dict)
 
+# ==================== UPDATED fetch_and_collect_stock_news ====================
 def fetch_and_collect_stock_news():
     global seen_news_titles, news_watched_stocks, day_news_log, stock_sentiment_counts, stock_latest_news_time, last_news_alert_time
     now_ist = datetime.now(IST)
     cycle_seen_symbols = set()
+    stock_news_alerts = []  # या सायकलमध्ये आलेल्या बातम्या
+
     for rss_url in INDIAN_NEWS_FEEDS:
         try:
             resp = requests.get(rss_url, headers=config.HTTP_HEADERS, timeout=8)
             if resp.status_code != 200:
+                logger.warning(f"RSS feed {rss_url} returned status {resp.status_code}")
                 continue
             soup = BeautifulSoup(resp.content, "xml")
             items = process_rss_items(soup, max_items=20, age_limit=config.STOCK_NEWS_AGE_LIMIT)
+            logger.info(f"📡 Fetched {len(items)} items from {rss_url}")
+
             for item in items:
                 title = item['title']
                 link = item['link']
                 pub_time = item['pub_time']
                 pub_time_formatted = item['pub_time_str']
-                if title:
-                    norm_title = normalize_text(title)
-                    if norm_title in seen_news_titles:
+                if not title:
+                    continue
+                norm_title = normalize_text(title)
+                if norm_title in seen_news_titles:
+                    continue
+                display_name, yf_symbol = extract_single_stock_only(title)
+                if display_name and yf_symbol:
+                    logger.info(f"✅ Matched stock: {display_name} ({yf_symbol})")
+                    seen_news_titles.add(norm_title)
+                    if yf_symbol in cycle_seen_symbols:
                         continue
-                    display_name, yf_symbol = extract_single_stock_only(title)
-                    if display_name and yf_symbol:
-                        seen_news_titles.add(norm_title)
-                        if yf_symbol in cycle_seen_symbols:
-                            continue
-                        last_alert_time = last_news_alert_time.get(yf_symbol)
-                        if last_alert_time and (now_ist - last_alert_time).total_seconds() < config.NEWS_COOLDOWN_SECONDS:
-                            continue
-                        sentiment, _ = analyze_sentiment(title)
-                        if "NEUTRAL" not in sentiment:
-                            stock_latest_news_time[yf_symbol] = pub_time
-                            price = get_accurate_price(yf_symbol)
-                            if price < 200:
-                               continue
-                            news_watched_stocks.add((display_name, yf_symbol))
-                            cycle_seen_symbols.add(yf_symbol)
-                            if yf_symbol not in stock_sentiment_counts:
-                                stock_sentiment_counts[yf_symbol] = {"pos": 0, "neg": 0}
-                            if "POSITIVE" in sentiment:
-                                stock_sentiment_counts[yf_symbol]["pos"] += 1
-                            else:
-                                stock_sentiment_counts[yf_symbol]["neg"] += 1
-                            pos_count = stock_sentiment_counts[yf_symbol]["pos"]
-                            neg_count = stock_sentiment_counts[yf_symbol]["neg"]
-                            marks_str = f"🟢 {pos_count} Pos | 🔴 {neg_count} Neg"
-                            news_obj = {
-                                "stock": display_name,
-                                "symbol": yf_symbol,
-                                "price": price,
-                                "title": title,
-                                "sentiment": sentiment,
-                                "time": pub_time_formatted,
-                                "link": link,
-                                "marks": marks_str,
-                                "quality": item.get('quality', 5)
-                            }
-                            day_news_log.append(news_obj)
-                            db.save_news(news_obj)  # Save to DB
-                            monitor.record_news()
+                    last_alert_time = last_news_alert_time.get(yf_symbol)
+                    if last_alert_time and (now_ist - last_alert_time).total_seconds() < config.NEWS_COOLDOWN_SECONDS:
+                        continue
+                    sentiment, _ = analyze_sentiment(title)
+                    if "NEUTRAL" in sentiment:
+                        continue
+                    stock_latest_news_time[yf_symbol] = pub_time
+                    price = get_accurate_price(yf_symbol)
+                    # ---- महत्त्वाचा बदल: price < 200 ची अट काढून टाकली ----
+                    # if price < 200:
+                    #    continue
+
+                    news_watched_stocks.add((display_name, yf_symbol))
+                    cycle_seen_symbols.add(yf_symbol)
+                    if yf_symbol not in stock_sentiment_counts:
+                        stock_sentiment_counts[yf_symbol] = {"pos": 0, "neg": 0}
+                    if "POSITIVE" in sentiment:
+                        stock_sentiment_counts[yf_symbol]["pos"] += 1
+                    else:
+                        stock_sentiment_counts[yf_symbol]["neg"] += 1
+                    pos_count = stock_sentiment_counts[yf_symbol]["pos"]
+                    neg_count = stock_sentiment_counts[yf_symbol]["neg"]
+                    marks_str = f"🟢 {pos_count} Pos | 🔴 {neg_count} Neg"
+                    news_obj = {
+                        "stock": display_name,
+                        "symbol": yf_symbol,
+                        "price": price,
+                        "title": title,
+                        "sentiment": sentiment,
+                        "time": pub_time_formatted,
+                        "link": link,
+                        "marks": marks_str,
+                        "quality": item.get('quality', 5)
+                    }
+                    day_news_log.append(news_obj)
+                    db.save_news(news_obj)
+                    monitor.record_news()
+                    # ही बातमी अलर्टसाठी सेव्ह करा
+                    stock_news_alerts.append(news_obj)
+                    logger.info(f"📰 News processed: {display_name} - {title[:50]}...")
+
         except Exception as e:
             logger.error(f"Error fetching news from {rss_url}: {e}")
             monitor.record_api_error()
+
+    # सायकल संपल्यावर स्टॉक न्यूजचा बॅच अलर्ट पाठवा
+    if stock_news_alerts:
+        send_stock_news_batch_alert(stock_news_alerts, now_ist)
 
 # ==================== SCHEDULED REPORTS ====================
 def send_845_am_premarket_report():
@@ -1622,7 +1666,7 @@ def emit_alert_to_web(signal):
     stats = db.get_stats()
     socketio.emit('stats_update', stats)
 
-# ==================== MAIN SCAN FUNCTION (Modified to emit to web) ====================
+# ==================== MAIN SCAN FUNCTION ====================
 def scan_and_alert():
     global last_sent_845_date, last_sent_910_date, last_sent_330_date
     scan_start = time.time()
@@ -1700,7 +1744,7 @@ def _scan_single_item(item):
         if sig:
             sig_dict = asdict(sig)
             send_instant_plus_signal_alert(sig_dict)
-            emit_alert_to_web(sig_dict)  # Send to web dashboard
+            emit_alert_to_web(sig_dict)
     except Exception as e:
         logger.error(f"Error scanning {name}: {e}")
 
@@ -1762,25 +1806,25 @@ if __name__ == "__main__":
     health_thread = threading.Thread(target=run_health_check, daemon=True)
     health_thread.start()
     
-    # Startup Alert - आता Cloud वर पण नेहमी पाठवा
-if not is_cloud_platform():
-    try:
-        startup_msg = (
-            "🚀 <b>Enhanced Radar Engine Active!</b>\n\n"
-            "📊 EMA Crossover & 24*7 Macro News Alerts\n"
-            "⚡ Interactive Telegram Buttons\n"
-            "🤖 AI Sentiment Analysis (if API key set)\n"
-            "🔊 Voice Alerts for Critical Signals\n"
-            "💾 SQLite Database Storage\n"
-            "🌐 Live Web Dashboard\n"
-            "🎯 Priority Scanning & Auto-Restart"
-        )
-        send_telegram_alert(startup_msg)
-        logger.info("Startup alert sent to Telegram")
-    except Exception as e:
-        logger.error(f"Startup alert error: {e}")
-else:
-    logger.info("Cloud platform - skipping startup alert (to avoid spam)")
+    # Startup Alert
+    if not is_cloud_platform():
+        try:
+            startup_msg = (
+                "🚀 <b>Enhanced Radar Engine Active!</b>\n\n"
+                "📊 EMA Crossover & 24*7 Macro News Alerts\n"
+                "⚡ Interactive Telegram Buttons\n"
+                "🤖 AI Sentiment Analysis (if API key set)\n"
+                "🔊 Voice Alerts for Critical Signals\n"
+                "💾 SQLite Database Storage\n"
+                "🌐 Live Web Dashboard\n"
+                "🎯 Priority Scanning & Auto-Restart"
+            )
+            send_telegram_alert(startup_msg)
+            logger.info("Startup alert sent to Telegram")
+        except Exception as e:
+            logger.error(f"Startup alert error: {e}")
+    else:
+        logger.info("Cloud platform - skipping startup alert (to avoid spam)")
     
     while True:
         try:
