@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-📰 SUPER ULTIMATE NEWS BOT
+📰 SUPER ULTIMATE NEWS BOT (FIXED)
 ✅ Asyncio + aioHTTP – वेगवान समांतर फेचिंग
-✅ feedparser – RSS पार्सिंग सोपी आणि मजबूत
+✅ feedparser – RSS पार्सिंग (सुरक्षित पद्धत)
+✅ requests – टेलीग्राम पाठवण्यासाठी
 ✅ रिट्री मेकॅनिझम – अयशस्वी फीड्स पुन्हा प्रयत्न
 ✅ मेमरी कॅश – डुप्लिकेट तपासणी वेगवान
 ✅ SQLite – कायम साठा
@@ -17,6 +18,7 @@ import re
 import logging
 import sqlite3
 import os
+import requests   # <-- हे आता import केले आहे
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Tuple
 import yfinance as yf
@@ -42,7 +44,7 @@ INDIAN_NEWS_FEEDS = [
     "https://www.cnbctv18.com/commonfeeds/v1/cne/rss/market.xml",
     "https://www.moneycontrol.com/rss/market/stocks.xml",
     "https://www.business-standard.com/rss/markets-106.rss",
-    
+    # "https://www.bloombergquint.com/feeds/india-markets-news.xml", # DNS एरर, म्हणून काढली
 ]
 
 GLOBAL_NEWS_FEEDS = [
@@ -53,7 +55,7 @@ GLOBAL_NEWS_FEEDS = [
 
 ALL_FEEDS = INDIAN_NEWS_FEEDS + GLOBAL_NEWS_FEEDS
 
-# स्टॉक मॅप, कीवर्ड्स – तुमच्या मूळ कोडप्रमाणेच (आम्ही वगळत आहोत, पण तेच ठेवा)
+# स्टॉक मॅप, कीवर्ड्स (बदल नाही)
 STOCKS_MAP = {
     "RELIANCE": "RELIANCE.NS",
     "HDFC BANK": "HDFCBANK.NS", "HDFCBANK": "HDFCBANK.NS",
@@ -182,7 +184,7 @@ def insert_news(item: Dict):
     finally:
         conn.close()
 
-# ==================== मेमरी कॅश (डुप्लिकेट तपासणीसाठी) ====================
+# ==================== मेमरी कॅश ====================
 news_cache = set()
 def is_cached(title: str, link: str) -> bool:
     key = (title.lower(), link)
@@ -191,7 +193,7 @@ def add_cache(title: str, link: str):
     key = (title.lower(), link)
     news_cache.add(key)
 
-# ==================== सेंटिमेंट आणि स्टॉक एक्सट्रॅक्टर ====================
+# ==================== सेंटिमेंट आणि स्टॉक ====================
 def analyze_sentiment(title: str) -> Tuple[str, int]:
     title_lower = title.lower()
     score = 0
@@ -239,9 +241,11 @@ def send_telegram_alert(message: str, disable_preview: bool = False, buttons: Li
     if buttons:
         payload['reply_markup'] = {"inline_keyboard": [[btn] for btn in buttons]}
     try:
-        requests.post(url, json=payload, timeout=10)
-    except:
-        pass
+        resp = requests.post(url, json=payload, timeout=10)
+        if resp.status_code != 200:
+            logger.error(f"Telegram send error: {resp.text}")
+    except Exception as e:
+        logger.error(f"Telegram exception: {e}")
 
 def send_news_item(item: Dict, is_first: bool = True):
     sentiment = item['sentiment']
@@ -283,15 +287,13 @@ async def fetch_feed(session, url, retry=0):
                 for entry in feed.entries[:MAX_ITEMS_PER_FEED]:
                     title = entry.get('title', '').strip()
                     link = entry.get('link', '')
-                    pub_str = entry.get('published', '') or entry.get('updated', '')
-                    if pub_str:
-                        try:
-                            pub_dt = feedparser._parse_date(pub_str)
-                            if pub_dt.tzinfo is None:
-                                pub_dt = pub_dt.replace(tzinfo=timezone.utc)
-                        except:
-                            pub_dt = datetime.now(timezone.utc)
-                    else:
+                    # सुरक्षित वेळ मिळवा
+                    pub_dt = None
+                    if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                        pub_dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                    elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
+                        pub_dt = datetime(*entry.updated_parsed[:6], tzinfo=timezone.utc)
+                    if not pub_dt:
                         pub_dt = datetime.now(timezone.utc)
                     age = (datetime.now(timezone.utc) - pub_dt).total_seconds()
                     if age > NEWS_AGE_LIMIT:
@@ -312,17 +314,18 @@ async def fetch_feed(session, url, retry=0):
                             'symbol': None, 'display_name': '🌐 मॅक्रो/ग्लोबल',
                             'time': pub_dt.strftime('%I:%M %p'), 'type': 'macro'
                         })
+                logger.info(f"✅ फीड {url} मधून {len(items)} बातम्या मिळाल्या")
                 return items
             else:
-                logger.warning(f"फीड {url} वरून {resp.status} आला")
+                logger.warning(f"⚠️ फीड {url} वरून {resp.status} आला")
                 return []
     except Exception as e:
         if retry < MAX_RETRIES:
-            logger.warning(f"फीड {url} अयशस्वी, पुन्हा प्रयत्न {retry+1}/{MAX_RETRIES}: {e}")
+            logger.warning(f"🔄 फीड {url} अयशस्वी, पुन्हा प्रयत्न {retry+1}/{MAX_RETRIES}: {e}")
             await asyncio.sleep(RETRY_DELAY)
             return await fetch_feed(session, url, retry+1)
         else:
-            logger.error(f"फीड {url} कायम अयशस्वी: {e}")
+            logger.error(f"❌ फीड {url} कायम अयशस्वी: {e}")
             return []
 
 async def fetch_all_feeds():
@@ -331,7 +334,7 @@ async def fetch_all_feeds():
         results = await asyncio.gather(*tasks)
         return results
 
-# ==================== मुख्य लूप (असिंक्रोनस) ====================
+# ==================== मुख्य लूप ====================
 seen_stocks = set()
 async def main_loop():
     global seen_stocks
@@ -347,7 +350,6 @@ async def main_loop():
             macro_news = []
             for items in all_results:
                 for item in items:
-                    # डुप्लिकेट तपासा (मेमरी कॅश + DB)
                     if is_cached(item['title'], item['link']) or news_exists(item['title'], item['link']):
                         continue
                     add_cache(item['title'], item['link'])
@@ -358,7 +360,6 @@ async def main_loop():
 
             logger.info(f"📊 नवीन: {len(stock_news)} स्टॉक, {len(macro_news)} मॅक्रो")
 
-            # प्रक्रिया – ग्रुपिंग, वॉचलिस्ट, LTP, मार्केट मूड (जुनेच)
             if stock_news or macro_news:
                 # ग्रुपिंग
                 groups = {}
@@ -369,7 +370,6 @@ async def main_loop():
                     is_watch = sym.split('.')[0] in WATCHLIST
                     items_sorted = sorted(items, key=lambda x: x.get('time', ''))
                     if sym not in seen_stocks or is_watch:
-                        # पहिली बातमी तपशीलवार
                         send_news_item(items_sorted[0], is_first=True)
                         seen_stocks.add(sym)
                         for it in items_sorted[1:]:
@@ -394,7 +394,7 @@ async def main_loop():
                 # मार्केट मूड
                 all_items = stock_news + macro_news
                 if all_items:
-                    avg = sum(i['score'] for i in all_items)/len(all_items)
+                    avg = sum(i['score'] for i in all_items) / len(all_items)
                     if avg >= 1.5:
                         mood = "🟢 तेजी (Bullish) 🐂"
                     elif avg <= -1.5:
