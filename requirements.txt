@@ -11,3 +11,4 @@ flask-socketio
 eventlet
 openai
 feedparser
+aiohttp
