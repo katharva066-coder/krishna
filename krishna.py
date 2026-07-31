@@ -571,7 +571,7 @@ def check_price_impact():
 
 # ==================== Twitter via Nitter ====================
 TWITTER_NITTER_URL = "https://nitter.net/search/rss?q=RELIANCE+OR+HDFC+OR+INFY+OR+NIFTY+OR+BANKNIFTY&f=live"
-ENABLE_NITTER_TWITTER = True
+ENABLE_NITTER_TWITTER = False
 
 async def fetch_nitter_twitter():
     if not ENABLE_NITTER_TWITTER:
