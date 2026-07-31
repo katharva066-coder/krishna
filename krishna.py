@@ -42,7 +42,7 @@ INDIAN_NEWS_FEEDS = [
     "https://www.cnbctv18.com/commonfeeds/v1/cne/rss/market.xml",
     "https://www.moneycontrol.com/rss/market/stocks.xml",
     "https://www.business-standard.com/rss/markets-106.rss",
-    "https://www.bloombergquint.com/feeds/india-markets-news.xml",
+    
 ]
 
 GLOBAL_NEWS_FEEDS = [
