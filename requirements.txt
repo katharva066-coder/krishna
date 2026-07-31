@@ -9,4 +9,5 @@ lxml
 pyttsx3
 flask-socketio
 eventlet
-openai==0.28
+openai
+feedparser
