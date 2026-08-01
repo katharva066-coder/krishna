@@ -19,3 +19,11 @@ services:
         value: 5000
       - key: ENABLE_AB_TESTING
         value: "False"
+      - key: ENABLE_VOICE_ALERTS
+        value: "False"   # optional, saves a bit
+      - key: ENABLE_TECHNICAL_INDICATORS
+        value: "True"    # light
+      - key: ENABLE_GLOBAL_CONTEXT
+        value: "True"
+      - key: ENABLE_EVENT_CALENDAR
+        value: "True"
