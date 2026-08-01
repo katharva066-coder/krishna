@@ -19,6 +19,10 @@ import warnings
 import math
 # At the top, after imports, add this:
 import os
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['PYTHONUNBUFFERED'] = '1'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # For ML, use only RandomForest (no XGBoost/LightGBM) if they fail.
 # Your EnsembleML class already has try/except for each import.
 import tempfile
