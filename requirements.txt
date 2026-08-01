@@ -16,3 +16,4 @@ joblib
 setuptools
 wheel
 matplotlib
+mplfinance
