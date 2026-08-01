@@ -2,7 +2,6 @@ aiohttp
 feedparser
 yfinance
 flask
-flask-socketio
 pytz
 vaderSentiment
 sumy
@@ -18,12 +17,9 @@ shap
 lightgbm
 gTTS
 plotly
-telegra-py
 redis
 aiosqlite
 polars
 requests
-python-socketio
-eventlet
 setuptools
 wheel
