@@ -12,3 +12,4 @@ eventlet
 openai
 feedparser
 aiohttp
+mplfinance
