@@ -7,8 +7,7 @@ services:
     buildCommand: |
       pip install --upgrade pip
       pip install -r requirements.txt
-      pip install tensorflow  # Remove this line if you don't want LSTM
-    startCommand: python krishna.py.py
+    startCommand: python krishna.py
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         value: 8634800722:AAESXRx8Xx3i1mqQvJCsh8ecLd0eP3kPdJQ
@@ -18,3 +17,5 @@ services:
         value: 3.11.9
       - key: PORT
         value: 5000
+      - key: ENABLE_AB_TESTING
+        value: "False"   # because tensorflow not installed
