@@ -18,4 +18,4 @@ services:
       - key: PORT
         value: 5000
       - key: ENABLE_AB_TESTING
-        value: "False"   # because tensorflow not installed
+        value: "False"
